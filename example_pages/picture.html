@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teacher Image Admin</title>
+    <style>
+        img { max-width: 200px; border: 1px solid #ccc; margin: 5px; }
+        .image-container { display: flex; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+    <h1>Teacher Image Admin</h1>
+
+    <div>
+        <label>Teacher ID:</label>
+        <input type="number" id="teacherId"><br><br>
+
+        <label>Admin Secret:</label>
+        <input type="text" id="adminSecret"><br><br>
+
+        <h1>THIS NEEDS TO BE A PNG. You may want to convert a jpeg to a png, but only send a png to the backend!!!</h1>
+        <label>Select Image:</label>
+        <input type="file" id="fileInput" accept="image/*"><br><br>
+
+        <button onclick="uploadImage()">Upload Image</button>
+        <button onclick="fetchImages()">Fetch Images</button>
+        <button onclick="fetchVoteImage()">Fetch Vote Image</button>
+
+    </div>
+
+    <h2>Images</h2>
+    <div class="image-container" id="imagesContainer"></div>
+
+    <script>
+        async function uploadImage() {
+            const teacherId = parseInt(document.getElementById('teacherId').value);
+            const adminSecret = document.getElementById('adminSecret').value;
+            const file = document.getElementById('fileInput').files[0];
+
+            if (!teacherId || !adminSecret || !file) {
+                alert("Teacher ID, Admin Secret, and file are required.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = async function(event) {
+                const base64 = event.target.result.split(',')[1];
+
+                const response = await fetch(`http://localhost:8001/api/admin/add_image?token=${adminSecret}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teacher_id: teacherId,
+                        image_binary: base64
+                    })
+                });
+
+                const data = await response.json();
+                alert(JSON.stringify(data, null, 2));
+                fetchImages(); // refresh images after upload
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function fetchImages() {
+            const teacherId = parseInt(document.getElementById('teacherId').value);
+            const adminSecret = document.getElementById('adminSecret').value;
+
+            if (!teacherId || !adminSecret) {
+                alert("Teacher ID and Admin Secret are required.");
+                return;
+            }
+
+            const response = await fetch(`http://localhost:8001/api/admin/get_images?teacher_id=${teacherId}&token=${adminSecret}`);
+            const result = await response.json();
+            const container = document.getElementById('imagesContainer');
+            container.innerHTML = '';
+
+            if (!result.success || !result.data) {
+                container.innerHTML = 'No images or error fetching.';
+                return;
+            }
+
+            result.data.forEach(img => {
+                const imageEl = document.createElement('img');
+                imageEl.src = 'data:image/png;base64,' + img.image;
+                container.appendChild(imageEl);
+            });
+        }
+
+        async function fetchVoteImage() {
+            // This endpoint returns raw PNG bytes
+            const teacherId = parseInt(document.getElementById('teacherId').value);
+            const response = await fetch(`http://localhost:8001/api/vote/image?teacher_id=${teacherId}&challenge=${document.getElementById('adminSecret').value}`);
+
+            if (!response.ok) {
+                alert("Failed to fetch PNG");
+                return;
+            }
+
+            // Read response as binary blob
+            const blob = await response.blob();
+
+            // Convert blob to object URL
+            const url = URL.createObjectURL(blob);
+
+            // Add image to the UI
+            const container = document.getElementById('imagesContainer');
+            const img = document.createElement('img');
+            img.src = url;
+            container.appendChild(img);
+        }
+    </script>
+</body>
+</html>

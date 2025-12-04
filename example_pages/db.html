@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Admin DB Panel Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 12px; }
+        table { border-collapse: collapse; margin-top: 1em; }
+        th, td { border: 1px solid #ccc; padding: 6px 10px; }
+        th { background: #eee; }
+        input[type="text"] { width: 160px; }
+        .muted { color: #666; font-size: 0.9em; }
+        .controls { margin: 8px 0; }
+        button { margin-left: 6px; }
+        .nowrap { white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <h2>Admin DB Panel Demo</h2>
+
+    <div class="controls">
+        <label>API Base: <input id="apiBase" type="text" size="40" value="http://localhost:8000/api"></label>
+        <span class="muted">(change if your API runs elsewhere)</span>
+    </div>
+
+    <div class="controls">
+        <label>API Token: <input id="token" type="text" size="60"></label>
+        <button id="btnList" onclick="loadTables()">List Tables</button>
+        <select id="tableSelect"></select>
+        <button id="btnFetch" onclick="fetchTable()">Fetch Table</button>
+    </div>
+
+    <div id="tableDiv"></div>
+    <div id="addRowDiv"></div>
+
+    <script>
+        let currentTable = "";
+        let pkField = "";
+
+        function getApiBase() {
+            let base = document.getElementById('apiBase').value.trim();
+            if (!base) base = 'http://localhost:8001/api';
+            // add http:// if user typed localhost without protocol
+            if (/^localhost[:/]/.test(base) || /^\d+\.\d+\.\d+\.\d+/.test(base)) base = 'http://' + base;
+            // remove trailing slash
+            return base.replace(/\/$/, '');
+        }
+
+        function escapeHtml(str){
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function safeFetch(url, opts) {
+            try {
+                const res = await fetch(url, opts);
+                if (!res.ok) {
+                    let text;
+                    try { text = await res.text(); } catch(e) { text = res.statusText; }
+                    throw new Error(`HTTP ${res.status}: ${text}`);
+                }
+                const json = await res.json();
+                return json;
+            } catch (err) {
+                // Surface a clear error to the UI / console
+                console.error('Fetch error', url, err);
+                throw err;
+            }
+        }
+
+        async function loadTables() {
+            const token = document.getElementById('token').value;
+            const base = getApiBase();
+            const url = `${base}/admin/db/list_tables?token=${encodeURIComponent(token)}`;
+            try {
+                const data = await safeFetch(url);
+                if (data && data.success) {
+                    const sel = document.getElementById('tableSelect');
+                    sel.innerHTML = '';
+                    data.data.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t; opt.textContent = t; sel.appendChild(opt);
+                    });
+                } else {
+                    alert('Failed to list tables: ' + (data && (data.message || data.data)));
+                }
+            } catch (err) {
+                alert('Failed to fetch table list. See console for details.\n' + err.message);
+            }
+        }
+
+        async function fetchTable() {
+            const token = document.getElementById('token').value;
+            const table = document.getElementById('tableSelect').value;
+            if (!table) { alert('Select a table first'); return; }
+            currentTable = table;
+            const base = getApiBase();
+            const url = `${base}/admin/db/fetch?token=${encodeURIComponent(token)}&table=${encodeURIComponent(table)}`;
+            try {
+                const data = await safeFetch(url);
+                if (data && data.success) {
+                    renderTable(data.data);
+                    renderAddRow(data.data);
+                } else {
+                    alert('Failed to fetch table: ' + (data && (data.message || data.data)));
+                }
+            } catch (err) {
+                alert('Failed to fetch table. See console for details.\n' + err.message);
+            }
+        }
+
+        function renderAddRow(rows) {
+            if (!rows || !rows.length) { document.getElementById('addRowDiv').innerHTML = ''; return; }
+            let html = "<h3>Add New Row</h3><form id='addRowForm'>";
+            Object.keys(rows[0]).forEach(k => html += `<label class="nowrap">${escapeHtml(k)}: <input type="text" name="${escapeHtml(k)}"></label> `);
+            html += `<button type="button" onclick="addRow()">Add</button></form>`;
+            document.getElementById('addRowDiv').innerHTML = html;
+        }
+
+        async function addRow() {
+            const token = document.getElementById('token').value;
+            const table = currentTable;
+            if (!table) { alert('Select a table first'); return; }
+            const form = document.getElementById('addRowForm');
+            const body = {};
+            for (let el of form.elements) if (el.name) body[el.name] = el.value;
+            const base = getApiBase();
+            const url = `${base}/admin/db/add?token=${encodeURIComponent(token)}&table=${encodeURIComponent(table)}`;
+            try {
+                const result = await safeFetch(url, {
+                    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+                });
+                if (result && result.success) { alert('Row added!'); fetchTable(); }
+                else alert('Add failed: ' + (result && (result.message || result.data)));
+            } catch (err) {
+                alert('Add failed. See console for details.\n' + err.message);
+            }
+        }
+
+        function renderTable(rows) {
+            if (!rows || !rows.length) { document.getElementById('tableDiv').innerHTML = '<i>No data</i>'; return; }
+            let html = '<table><tr>';
+            Object.keys(rows[0]).forEach(k => html += `<th>${escapeHtml(k)}</th>`);
+            html += '<th>Actions</th></tr>';
+            pkField = Object.keys(rows[0])[0];
+            rows.forEach(row => {
+                html += '<tr>';
+                Object.entries(row).forEach(([k, v]) => {
+                    const safeVal = escapeHtml(v);
+                    const readonly = (k === pkField) ? 'readonly' : '';
+                    html += `<td><input type="text" value="${safeVal}" id="cell_${encodeURIComponent(row[pkField])}_${escapeHtml(k)}" ${readonly}></td>`;
+                });
+                html += `<td><button onclick="editRow('${encodeURIComponent(row[pkField])}')">Save</button></td></tr>`;
+            });
+            html += '</table>';
+            document.getElementById('tableDiv').innerHTML = html;
+        }
+
+        async function editRow(pkEnc) {
+            const token = document.getElementById('token').value;
+            const table = currentTable; if (!table) { alert('Select a table first'); return; }
+            const pk = decodeURIComponent(pkEnc);
+            const inputs = document.querySelectorAll(`input[id^='cell_${pkEnc}_']`);
+            const base = getApiBase();
+            try {
+                for (let input of inputs) {
+                    const parts = input.id.split('_');
+                    // id format: cell_<pk>_<field> (field may contain underscores)
+                    const field = parts.slice(2).join('_');
+                    if (field === pkField) continue;
+                    const value = input.value;
+                    const url = `${base}/admin/db/edit?token=${encodeURIComponent(token)}&table=${encodeURIComponent(table)}&pk=${encodeURIComponent(pk)}&field=${encodeURIComponent(field)}&value=${encodeURIComponent(value)}`;
+                    const data = await safeFetch(url, { method: 'POST' });
+                    if (!data || !data.success) throw new Error('Edit failed: ' + (data && (data.message || data.data)));
+                }
+                alert('Row updated!'); fetchTable();
+            } catch (err) {
+                alert('Edit failed. See console for details.\n' + err.message);
+            }
+        }
+
+        // helpful: allow Enter to list tables when focused on token
+        document.getElementById('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadTables(); });
+    </script>
+</body>
+</html>

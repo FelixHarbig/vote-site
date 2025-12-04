@@ -1,0 +1,19 @@
+psycopg2
+dotenv
+fastapi_cache2 # fastapi_cache is wrong, even if the import name is that
+sqlalchemy
+redis
+fastapi
+uvicorn
+slowapi
+prometheus_client
+DateTime
+pydantic
+asyncpg
+
+# optional
+alembic
+
+
+# i tried to keep this minimal, if you have the issue that something is not installed, you may use requirements_complete.txt
+# PLEASE add it to requirements.txt afterwards so other people can just use this

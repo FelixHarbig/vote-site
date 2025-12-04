@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: backend_docker/Dockerfile
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    networks:
+      - internal
+    
+    logging: # TODO hasn't really worked yet
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  internal:
+    external: true
+    name: vote_internal
