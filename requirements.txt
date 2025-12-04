@@ -1,4 +1,4 @@
-psycopg2
+psycopg2-binary
 dotenv
 fastapi_cache2 # fastapi_cache is wrong, even if the import name is that
 sqlalchemy
