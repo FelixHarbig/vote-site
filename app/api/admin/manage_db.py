@@ -8,7 +8,6 @@ import os
 from common.log_handler import log
 from ..utils import api_response
 from datetime import datetime, date
-from ..anti_abuse import register_failed_ip
 from .utils import authorize_admin
 from ..schemas import AdminResponse
 

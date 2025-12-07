@@ -1,0 +1,5 @@
+name,gender,subjects,disabled
+Heinrich,True,"""chemistry,maths""",
+Gandalf,True,"""english""",
+Frederike,False,"""religion,computer science""",
+Daniel Autisticó,1,,1

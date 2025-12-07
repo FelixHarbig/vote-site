@@ -10,6 +10,7 @@ prometheus_client
 DateTime
 pydantic
 asyncpg
+python-multipart
 
 # optional
 alembic
