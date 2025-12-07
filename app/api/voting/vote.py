@@ -16,6 +16,23 @@ from ..anti_abuse import register_failed_ip
 from ..schemas import VoteVerifyResponse, TeachersListResponse, VoteSubmissionItem, VoteSubmitResponse
 
 
+async def verify_challenge(challenge: str, request: Request, awaiting: bool = False) -> bool:
+    async with get_session() as session:
+        print(challenge)
+        key_value = "awaiting" + challenge if awaiting else challenge
+        vote = await session.execute(
+            select(VoteCodes).where((VoteCodes.continuation_key == key_value) & (VoteCodes.disabled == False) & (VoteCodes.used == False))
+        )
+        vote = vote.scalars().first()
+        if not vote:
+            await register_failed_ip(request.client.host)
+            log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
+            return api_response(message="Invalid challenge.", success=False, status_code=404)
+        if awaiting:
+            vote.continuation_key = str(challenge)
+            await session.commit()
+        return True
+
 @router.post("/vote/verify", response_model=VoteVerifyResponse)
 @track_metrics(vote_verifications_total, "verify_vote")
 @limiter.limit("10/hour" if os.getenv("DEV").upper() != "TRUE" else "20/minute")
@@ -109,22 +126,10 @@ async def solve_vote(vote_code: str, challenge: str, request: Request):
         The challenge-response mechanism prevents unauthorized voting.
     """
     log.info(f"Vote solving requested from {request.client.host} for code {vote_code}")
-
-    async with get_session() as session:
-        vote = await session.execute(
-            select(VoteCodes).where((VoteCodes.code == vote_code) & (VoteCodes.disabled == False))
-        )
-        vote = vote.scalars().first()
-        if not vote or not vote.continuation_key or vote.used:
-            await register_failed_ip(request.client.host)
-            log.warning(f"Invalid vote code attempt from {request.client.host}: {vote_code}")
-            return api_response(message="Invalid vote code.", success=False, status_code=404)
-        expected_key = "awaiting"+challenge
-        if vote.continuation_key != expected_key:
-            log.warning(f"Invalid challenge attempt from {request.client.host} for code {vote_code}")
-            return api_response(message="Invalid challenge.", success=False, status_code=400)
-        vote.continuation_key = str(challenge)
-        await session.commit()
+    
+    valid = await verify_challenge(challenge=challenge, request=request, awaiting=True)
+    if valid is not True:
+        return valid
     teachers = await fetch_teachers()
     log.info(f"Vote challenge successfully solved from {request.client.host} for code {vote_code}")
     return api_response(message="Vote successfully solved.", data=teachers)
@@ -167,31 +172,19 @@ async def get_teachers(request: Request, challenge: str):
         Challenge must be a valid challenge from /vote/solve.
     """
     log.info(f"Teachers request from {request.client.host} with challenge {challenge}")
-    async with get_session() as session:
-        vote = await session.execute(
-            select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
-        )
-        vote = vote.scalars().first()
-        if not vote or vote.used:
-            await register_failed_ip(request.client.host)
-            log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
-            return api_response(message="Invalid challenge.", success=False, status_code=404)
+    valid = await verify_challenge(challenge=challenge, request=request)
+    if valid is not True:
+        return valid
     teachers = await fetch_teachers()
     log.info(f"Teachers successfully requested from {request.client.host}")
     return api_response(message="Teachers successfully retrieved.", data=teachers)
 
 @router.get("/vote/options")
 async def get_vote_options(request: Request, challenge: str):
+    valid = await verify_challenge(challenge=challenge, request=request)
+    if valid is not True:
+        return valid
     options = []
-    async with get_session() as session:
-        vote = await session.execute(
-            select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
-        )
-        vote = vote.scalars().first()
-        if not vote or vote.used:
-            await register_failed_ip(request.client.host)
-            log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
-            return api_response(message="Invalid challenge.", success=False, status_code=404)
     for field_name, _ in VoteSubmissionItem.model_fields.items():
         options.append(field_name)
     return api_response(message="Vote options retrieved.", data=options)
@@ -199,15 +192,10 @@ async def get_vote_options(request: Request, challenge: str):
 @router.get("/vote/image", response_class=Response)
 @limiter.limit("10/minute" if os.getenv("DEV").upper() != "TRUE" else "60/minute")
 async def get_image(teacher_id: int, request: Request, challenge: str, number: int = 1):
-    async with get_session() as session:
-        vote = await session.execute(
-            select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
-        )
-        vote = vote.scalars().first()
-        if (not vote or vote.used) and not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"):
-            await register_failed_ip(request.client.host)
-            log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
-            return api_response(message="Invalid challenge.", success=False, status_code=404)
+    if not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"):
+        valid = await verify_challenge(challenge=challenge, request=request)
+        if valid is not True:
+            return valid
     cached = await get_image_from_cache(teacher_id, number)
     if cached:
         log.info(f"Serving cached image for teacher {teacher_id}")
