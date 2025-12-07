@@ -183,7 +183,15 @@ async def get_teachers(request: Request, challenge: str):
 @router.get("/vote/options")
 async def get_vote_options(request: Request, challenge: str):
     options = []
-
+    async with get_session() as session:
+        vote = await session.execute(
+            select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
+        )
+        vote = vote.scalars().first()
+        if not vote or vote.used:
+            await register_failed_ip(request.client.host)
+            log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
+            return api_response(message="Invalid challenge.", success=False, status_code=404)
     for field_name, _ in VoteSubmissionItem.model_fields.items():
         options.append(field_name)
     return api_response(message="Vote options retrieved.", data=options)
@@ -196,7 +204,7 @@ async def get_image(teacher_id: int, request: Request, challenge: str, number: i
             select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
         )
         vote = vote.scalars().first()
-        if (not vote or vote.used) and not challenge == os.getenv("ADMIN_SECRET"):
+        if (not vote or vote.used) and not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"):
             await register_failed_ip(request.client.host)
             log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
             return api_response(message="Invalid challenge.", success=False, status_code=404)

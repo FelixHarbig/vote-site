@@ -8,6 +8,7 @@ def api_response(
     message: Optional[str] = None,
     success: bool = True,
     status_code: int = 200,
+    headers: dict = None,
 ):
     payload = {
         "success": success,
@@ -17,7 +18,8 @@ def api_response(
 
     return JSONResponse(
         content=payload,
-        status_code=status_code
+        status_code=status_code,
+        headers=headers
     )
 
 redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))

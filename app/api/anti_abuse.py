@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi import Request
 from typing import Callable, Awaitable
 from common.log_handler import log
-
+from .utils import api_response
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 r = aioredis.from_url(redis_url, decode_responses=True)
@@ -46,11 +46,7 @@ def setup_ban_middleware(app):
         banned, retry = await is_ip_banned(ip)
         if banned:
             retry_seconds = int(retry.total_seconds())
-            return JSONResponse(
-                {"detail": "Your IP is banned", "retry_after_seconds": retry_seconds},
-                status_code=403,
-                headers={"Retry-After": str(retry_seconds)},
-            )
+            return api_response(message="Your IP is banned", data=f"retry_after_seconds: {retry_seconds}", success=False, status_code=403, headers={"Retry-After": str(retry_seconds)})
         return await call_next(request)
     
 async def reset_ip_ban(ip: str):
