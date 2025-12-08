@@ -94,6 +94,42 @@ class VoteSubmitResponse(BaseModel):
     message: str = Field(..., description="Status message")
     data: None
 
+class VoteAverages(BaseModel):
+    """Vote averages for a teacher across all voting criteria."""
+    overall: Optional[float] = Field(None, description="Average overall rating (1-10)", ge=1, le=10)
+    understandability: Optional[float] = Field(None, description="Average understandability rating (1-10)", ge=1, le=10)
+    helpfulness: Optional[float] = Field(None, description="Average helpfulness rating (1-10)", ge=1, le=10)
+    fairness: Optional[float] = Field(None, description="Average fairness rating (1-10)", ge=1, le=10)
+    clarity: Optional[float] = Field(None, description="Average clarity rating (1-10)", ge=1, le=10)
+    homework_amount: Optional[float] = Field(None, description="Average homework_amount rating (1-10)", ge=1, le=10)
+    exam_difficulty: Optional[float] = Field(None, description="Average exam_difficulty rating (1-10)", ge=1, le=10)
+    humor: Optional[float] = Field(None, description="Average humor rating (1-10)", ge=1, le=10)
+    character: Optional[float] = Field(None, description="Average character rating (1-10)", ge=1, le=10)
+    style: Optional[float] = Field(None, description="Average style rating (1-10)", ge=1, le=10)
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "overall": 7.5,
+                "understandability": 8.0,
+                "helpfulness": 7.2,
+                "fairness": 8.5,
+                "clarity": 7.8,
+                "homework_amount": 6.5,
+                "exam_difficulty": 7.0,
+                "humor": 8.2,
+                "character": 8.0,
+                "style": 7.5
+            }
+        }
+
+
+class VotecountResponse(BaseModel):
+    """Response containing vote averages for a teacher."""
+    success: bool = Field(..., description="Whether operation was successful")
+    message: Optional[str] = Field(None, description="Status message")
+    data: Optional[VoteAverages] = Field(None, description="Vote averages across all criteria")
+    status_code: Optional[int] = Field(None, description="HTTP status code")
 
 
 # ============================================================================

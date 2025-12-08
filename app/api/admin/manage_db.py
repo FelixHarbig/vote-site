@@ -2,7 +2,7 @@ from fastapi import Request, Query, Body, HTTPException
 from sqlalchemy.inspection import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
-from database.models import Teachers, Votes, Images, VoteCodes, get_session
+from database.models import Teachers, Votes, Images, VoteCodes, Settings, get_session
 from api.router import router
 import os
 from common.log_handler import log
@@ -19,6 +19,7 @@ MODEL_MAP = {
     "votes": Votes,
     "images": Images,
     "votecodes": VoteCodes,
+    "settings": Settings,
 }
 
 def serialize_row(row):

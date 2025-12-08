@@ -8,13 +8,35 @@ import redis.asyncio as redis
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 from common.log_handler import log
-from database.models import VotingEngine, voting_engine
+from database.models import VotingEngine, voting_engine, get_session, Settings
 import asyncio
 from api.rate_limiter import limiter
+from sqlalchemy import select
 
 
 load_dotenv()
 
+async def create_settings():
+    """
+    generates given settings if they do not exist
+    """
+    settings = {"vote_public": False, "vote_locked": False, "vote_public_tokenless": False}
+    async with get_session() as session:
+        for key in settings:
+            result = await session.execute(
+                select(Settings).where(Settings.name == key)
+            )
+            setting = result.scalars().first()
+            if not setting:
+                new_setting = Settings(name=key, enabled=settings[key])
+                log.info(f"Adding {key} to database with default value {settings[key]}")
+                session.add(new_setting)
+        try:
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            log.error(f"FATAL: Couldn't commit settings to database. Error:",e)
+                
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +53,8 @@ async def lifespan(app: FastAPI):
     async with voting_engine.begin() as conn:
         log.info("Creating database tables if they do not exist")
         await conn.run_sync(VotingEngine.metadata.create_all)
+    
+    await create_settings()
 
     try:
         yield

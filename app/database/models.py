@@ -80,6 +80,12 @@ class VoteCodes(VotingEngine):
 
     disabled = sqlalchemy.Column(sqlalchemy.Boolean, default=False, nullable=False)
 
+class Settings(VotingEngine):
+    __tablename__ = "settings"
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    name = sqlalchemy.Column(sqlalchemy.String, unique=True, nullable=False)
+    enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False)
+
 AsyncSessionLocal = sqlalchemy.ext.asyncio.async_sessionmaker(voting_engine, class_=sqlalchemy.ext.asyncio.AsyncSession, expire_on_commit=False)
 
 @asynccontextmanager

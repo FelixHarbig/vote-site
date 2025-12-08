@@ -8,28 +8,49 @@ import random
 import string
 import os
 from sqlalchemy import select
-from database.models import get_session, VoteCodes, Teachers, Votes, Images
+from database.models import get_session, VoteCodes, Teachers, Votes, Images, Settings
 from database.utils import fetch_teachers
 from typing import Dict, Any
 from .tracker import track_metrics, vote_verifications_total, vote_solves_total, vote_submissions_total
 from ..anti_abuse import register_failed_ip
-from ..schemas import VoteVerifyResponse, TeachersListResponse, VoteSubmissionItem, VoteSubmitResponse
+from ..schemas import VoteVerifyResponse, TeachersListResponse, VoteSubmissionItem, VoteSubmitResponse, VotecountResponse
 
 
-async def verify_challenge(challenge: str, request: Request, awaiting: bool = False) -> bool:
+async def verify_challenge(challenge: str, request: Request, awaiting: bool = False, check_used: bool = False) -> bool:
+    """
+    Verify that a given challenge (possibly awaiting continuation) is valid.
+    
+    Args:
+        challenge: Challenge string to verify.
+        request: FastAPI Request object (used for IP logging on failure).
+        awaiting: Whether this is an awaiting continuation check.
+        check_used: If True, excludes already used codes.
+    
+    Returns:
+        True if challenge is valid, otherwise an API response with an error.
+    """
+    if len(challenge) < 3:
+        # the idea is that if any admin fails incredibly badly that no extremely easy challenge goes trough (still allows a huge amount of freedom, but please make the challenges long enough if editing directly)
+        await register_failed_ip(request.client.host)
+        log.warning(f"Invalid short challenge attempt from {request.client.host}: {challenge}")
+        return api_response(message="Invalid challenge.", success=False, status_code=404)
+    
+    key_value = "awaiting" + challenge if awaiting else challenge
     async with get_session() as session:
-        print(challenge)
-        key_value = "awaiting" + challenge if awaiting else challenge
-        vote = await session.execute(
-            select(VoteCodes).where((VoteCodes.continuation_key == key_value) & (VoteCodes.disabled == False) & (VoteCodes.used == False))
-        )
-        vote = vote.scalars().first()
-        if not vote:
+        conditions = [
+            VoteCodes.continuation_key == key_value,
+            VoteCodes.disabled.is_(False)
+        ]
+        if check_used:
+            conditions.append(VoteCodes.used.is_(False))
+        result = await session.execute(select(VoteCodes).where(*conditions))
+        vote_record = result.scalars().first()
+        if not vote_record:
             await register_failed_ip(request.client.host)
             log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
             return api_response(message="Invalid challenge.", success=False, status_code=404)
         if awaiting:
-            vote.continuation_key = str(challenge)
+            vote_record.continuation_key = challenge
             await session.commit()
         return True
 
@@ -84,7 +105,7 @@ async def verify_vote(vote_code: str, request: Request):
             await register_failed_ip(request.client.host)
             log.info(f"Vote code already verified from {request.client.host}: {vote_code}")
             return api_response(message="Invalid vote code. ID: 2", success=False, status_code=400)
-        challenge = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits)for _ in range(32))
+        challenge = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits)for _ in range(32)) # make sure the challenge is at least 16 characters or else this is useless
         vote.continuation_key = "awaiting"+challenge
         await session.commit()
     log.info(f"Vote code verified from {request.client.host}: {vote_code}")
@@ -266,10 +287,17 @@ async def submit_vote(request: Request, challenge: str, vote_data: Dict[str, Vot
                 select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
             )
             vote = vote.scalars().first()
-            if not vote or vote.used:
+            if not vote or vote.used or len(challenge) < 3:
                 log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
                 return api_response(message="Invalid challenge.", success=False, status_code=404)
             
+            result = await session.execute(
+                select(Settings).where(Settings.name == "vote_locked")
+            )
+            setting = result.scalars().first()
+            if setting.enabled:
+                return api_response(message="Voting is now locked. If viewing is open, you don't need to have voted", success=False, status_code=423)
+
             teacher_ids = [int(tid) for tid in vote_data.keys() if tid.isdigit()]
             teachers_query = await session.execute(
                 select(Teachers).where(Teachers.id.in_(teacher_ids), Teachers.disabled == False)
@@ -314,3 +342,62 @@ async def submit_vote(request: Request, challenge: str, vote_data: Dict[str, Vot
     except Exception as e:
         log.error(f"Unexpected error during vote submission from {request.client.host}: {e}")
         return api_response(message="Unexpected error during vote submission.", success=False, status_code=500)
+    
+
+@router.get("/get_vote_outcome", response_model=VotecountResponse)
+@cache(600) # !!! If you enable vote_public it can take up to 10 minutes for it to be visible to people
+async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = None):
+    async with get_session() as session:
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_public_tokenless")
+        )
+        setting = result.scalars().first()
+        if not setting.enabled:
+            vote = await session.execute(
+                select(VoteCodes).where((VoteCodes.continuation_key == challenge) & (VoteCodes.disabled == False))
+            )
+            vote = vote.scalars().first()
+            if not vote or not challenge or len(challenge) < 3:
+                await register_failed_ip(request.client.host)
+                log.warning(f"Invalid challenge attempt from {request.client.host}: {challenge}")
+                return api_response(message="Invalid challenge.", success=False, status_code=404)
+            result = await session.execute(
+                select(Settings).where(Settings.name == "vote_locked")
+            )
+            setting = result.scalars().first()
+            if not vote.used and not setting.enabled:
+                return api_response(message="Vote first so see results.", success=False, status_code=412)
+        
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_public")
+        )
+        setting = result.scalars().first()
+        if not setting.enabled == True:
+            return api_response(message="Votes are not yet publicly available", success=False, status_code=423)
+
+        teacher_result = await session.execute(
+            select(Teachers).where((Teachers.id == teacher_id) & (Teachers.disabled == False))
+        )
+        teacher = teacher_result.scalars().first()
+        if not teacher:
+            return api_response(message="Teacher not found", success=False, status_code=404)
+
+        result = await session.execute(
+            select(Votes).where(Votes.teacher_id == teacher_id)
+        )
+        votes = result.scalars().all()
+
+        averages = {}
+        votes_model_fields = {col.name for col in Votes.__table__.columns 
+                               if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+        if votes:
+            for field_name in votes_model_fields:
+                values = [getattr(v, field_name) for v in votes if getattr(v, field_name) is not None]
+                if values:
+                    averages[field_name] = sum(values) / len(values)
+                else:
+                    averages[field_name] = None
+        else:
+            for field_name in votes_model_fields:
+                averages[field_name] = None
+    return api_response(data=averages)
