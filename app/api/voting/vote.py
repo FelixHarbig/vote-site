@@ -317,6 +317,11 @@ async def submit_vote(request: Request, challenge: str, vote_data: Dict[str, Vot
                     await session.rollback()
                     log.info(f"Invalid teacher ID format: {teacher_id} from {request.client.host}")
                     return api_response(message=f"Invalid teacher ID: {teacher_id}", success=False, status_code=400)
+                
+                if submission.overall is None:
+                    await session.rollback()
+                    log.info(f"Missing 'overall' rating for teacher {teacher_id} from {request.client.host}")
+                    return api_response(message=f"Overall rating is required for teacher {teacher_id}.", success=False, status_code=400)
 
                 vote_kwargs = {
                     'teacher_id': int(teacher_id),

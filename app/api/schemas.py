@@ -60,7 +60,7 @@ class TeachersListResponse(BaseModel):
 
 class VoteSubmissionItem(BaseModel):
     """Individual vote submission for a teacher. All fields optional for dynamic handling."""
-    overall: Optional[int] = Field(None, ge=1, le=10, description="Overall rating (1-10)")
+    overall: int = Field(None, ge=1, le=10, description="Overall rating (1-10)")
     understandability: Optional[int] = Field(None, ge=1, le=10, description="understandability rating (1-10)")
     helpfulness: Optional[int] = Field(None, ge=1, le=10, description="helpfulness rating (1-10)")
     fairness: Optional[int] = Field(None, ge=1, le=10, description="fairness rating (1-10)")
