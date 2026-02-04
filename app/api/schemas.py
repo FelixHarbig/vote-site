@@ -8,6 +8,41 @@ These models provide type hints, validation, and examples for FastAPI's auto-gen
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
 
+# inputs
+
+class VoteSubmissionItem(BaseModel):
+    """Individual vote submission for a teacher. All fields optional for dynamic handling."""
+    overall: int = Field(None, ge=1, le=10, description="Overall rating (1-10)")
+    understandability: Optional[int] = Field(None, ge=1, le=10, description="understandability rating (1-10)")
+    helpfulness: Optional[int] = Field(None, ge=1, le=10, description="helpfulness rating (1-10)")
+    fairness: Optional[int] = Field(None, ge=1, le=10, description="fairness rating (1-10)")
+    clarity: Optional[int] = Field(None, ge=1, le=10, description="clarity rating (1-10)")
+    homework_amount: Optional[int] = Field(None, ge=1, le=10, description="homework_amount rating (1-10)")
+    exam_difficulty: Optional[int] = Field(None, ge=1, le=10, description="exam_difficulty rating (1-10)")
+    humor: Optional[int] = Field(None, ge=1, le=10, description="humor rating (1-10)")
+    character: Optional[int] = Field(None, ge=1, le=10, description="character rating (1-10)")
+    style: Optional[int] = Field(None, ge=1, le=10, description="style rating (1-10)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "overall": 5,
+                "understandability": 6,
+                "helpfulness": 7,
+                "fairness": 8,
+                "clarity": 5,
+                "homework_amount": 4,
+                "exam_difficulty": 6,
+                "humor": 7,
+                "character": 8,
+                "style": 5
+            }
+        }
+
+class VoteCodeRequest(BaseModel):
+    """Request body for vote verification."""
+    vote_code: str = Field(..., min_length=1, description="The unique vote code provided to the student")
+
 
 # ============================================================================
 # VOTING ENDPOINTS SCHEMAS
@@ -56,36 +91,6 @@ class TeachersListResponse(BaseModel):
     message: Optional[str] = None
     data: Optional[Dict[str, TeacherInfo]] = None
     status_code: Optional[int] = None
-
-
-class VoteSubmissionItem(BaseModel):
-    """Individual vote submission for a teacher. All fields optional for dynamic handling."""
-    overall: int = Field(None, ge=1, le=10, description="Overall rating (1-10)")
-    understandability: Optional[int] = Field(None, ge=1, le=10, description="understandability rating (1-10)")
-    helpfulness: Optional[int] = Field(None, ge=1, le=10, description="helpfulness rating (1-10)")
-    fairness: Optional[int] = Field(None, ge=1, le=10, description="fairness rating (1-10)")
-    clarity: Optional[int] = Field(None, ge=1, le=10, description="clarity rating (1-10)")
-    homework_amount: Optional[int] = Field(None, ge=1, le=10, description="homework_amount rating (1-10)")
-    exam_difficulty: Optional[int] = Field(None, ge=1, le=10, description="exam_difficulty rating (1-10)")
-    humor: Optional[int] = Field(None, ge=1, le=10, description="humor rating (1-10)")
-    character: Optional[int] = Field(None, ge=1, le=10, description="character rating (1-10)")
-    style: Optional[int] = Field(None, ge=1, le=10, description="style rating (1-10)")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "overall": 5,
-                "understandability": 6,
-                "helpfulness": 7,
-                "fairness": 8,
-                "clarity": 5,
-                "homework_amount": 4,
-                "exam_difficulty": 6,
-                "humor": 7,
-                "character": 8,
-                "style": 5
-            }
-        }
 
 
 class VoteSubmitResponse(BaseModel):

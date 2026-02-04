@@ -1,8 +1,8 @@
 from ..router import router
 from fastapi_cache.decorator import cache
 from common.log_handler import log
-from fastapi import Request, Body, Response
-from ..utils import api_response, get_image_from_cache, set_image_cache
+from fastapi import Request, Body, Response, Header, Security
+from ..utils import api_response, get_image_from_cache, set_image_cache, extract_challenge_from_header
 from ..rate_limiter import limiter
 import random
 import string
@@ -13,7 +13,7 @@ from database.utils import fetch_teachers
 from typing import Dict, Any
 from .tracker import track_metrics, vote_verifications_total, vote_solves_total, vote_submissions_total
 from ..anti_abuse import register_failed_ip
-from ..schemas import VoteVerifyResponse, TeachersListResponse, VoteSubmissionItem, VoteSubmitResponse, VotecountResponse
+from ..schemas import VoteVerifyResponse, TeachersListResponse, VoteSubmissionItem, VoteSubmitResponse, VotecountResponse, VoteCodeRequest
 
 
 async def verify_challenge(challenge: str, request: Request, awaiting: bool = False, check_used: bool = False) -> bool:
@@ -57,7 +57,7 @@ async def verify_challenge(challenge: str, request: Request, awaiting: bool = Fa
 @router.post("/vote/verify", response_model=VoteVerifyResponse)
 @track_metrics(vote_verifications_total, "verify_vote")
 @limiter.limit("10/hour" if os.getenv("DEV").upper() != "TRUE" else "20/minute")
-async def verify_vote(vote_code: str, request: Request):
+async def verify_vote(body: VoteCodeRequest, request: Request):
     """
     Verify a vote code and receive a challenge token.
     
@@ -87,6 +87,7 @@ async def verify_vote(vote_code: str, request: Request):
     Note:
         Failed attempts register the IP address for anti-abuse tracking.
     """
+    vote_code = body.vote_code.strip()
     log.info(f"Vote verification requested from {request.client.host} for code {vote_code}")
 
     async with get_session() as session:
@@ -114,7 +115,7 @@ async def verify_vote(vote_code: str, request: Request):
 @router.post("/vote/solve", response_model=TeachersListResponse)
 @track_metrics(vote_solves_total, "solve_vote")
 @limiter.limit("5/hour" if os.getenv("DEV").upper() != "TRUE" else "20/minute")
-async def solve_vote(vote_code: str, challenge: str, request: Request):
+async def solve_vote(body: VoteCodeRequest, request: Request, challenge: str = Security(extract_challenge_from_header)):
     """
     Solve the challenge and unlock teacher list retrieval.
     
@@ -146,6 +147,7 @@ async def solve_vote(vote_code: str, challenge: str, request: Request):
     Note:
         The challenge-response mechanism prevents unauthorized voting.
     """
+    vote_code = body.vote_code.strip()
     log.info(f"Vote solving requested from {request.client.host} for code {vote_code}")
     
     valid = await verify_challenge(challenge=challenge, request=request, awaiting=True)
@@ -159,7 +161,7 @@ async def solve_vote(vote_code: str, challenge: str, request: Request):
 @router.get("/vote/get_teachers", response_model=TeachersListResponse)
 @limiter.limit("5/minute" if os.getenv("DEV").upper() != "TRUE" else "20/minute")
 @cache(expire=600) # change this to whatever you want, 1 = 1 second
-async def get_teachers(request: Request, challenge: str):
+async def get_teachers(request: Request, challenge: str = Security(extract_challenge_from_header)):
     """
     Retrieve the list of available teachers.
     
@@ -201,7 +203,11 @@ async def get_teachers(request: Request, challenge: str):
     return api_response(message="Teachers successfully retrieved.", data=teachers)
 
 @router.get("/vote/options")
-async def get_vote_options(request: Request, challenge: str):
+async def get_vote_options(request: Request, authorization: str = Header(..., alias="Authorization")):
+    success, challenge = await extract_challenge_from_header(authorization)
+    if not success:
+        return challenge
+    log.debug(f"Vote options requested from {request.client.host}")
     valid = await verify_challenge(challenge=challenge, request=request)
     if valid is not True:
         return valid
@@ -212,7 +218,7 @@ async def get_vote_options(request: Request, challenge: str):
 
 @router.get("/vote/image", response_class=Response)
 @limiter.limit("10/minute" if os.getenv("DEV").upper() != "TRUE" else "60/minute")
-async def get_image(teacher_id: int, request: Request, challenge: str, number: int = 1):
+async def get_image(teacher_id: int, request: Request, challenge: str = Security(extract_challenge_from_header), number: int = 1):
     if not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"):
         valid = await verify_challenge(challenge=challenge, request=request)
         if valid is not True:
@@ -238,7 +244,7 @@ async def get_image(teacher_id: int, request: Request, challenge: str, number: i
 @router.post("/vote/submit", response_model=VoteSubmitResponse)
 @track_metrics(vote_submissions_total, "submit_vote")
 @limiter.limit("5/hour" if os.getenv("DEV").upper() != "TRUE" else "20/minute")
-async def submit_vote(request: Request, challenge: str, vote_data: Dict[str, VoteSubmissionItem] = Body(...)):
+async def submit_vote(request: Request, vote_data: Dict[str, VoteSubmissionItem] = Body(...), challenge: str = Security(extract_challenge_from_header)):
     """
     Submit votes for one or more teachers.
     
@@ -351,7 +357,8 @@ async def submit_vote(request: Request, challenge: str, vote_data: Dict[str, Vot
 
 @router.get("/get_vote_outcome", response_model=VotecountResponse)
 @cache(600) # !!! If you enable vote_public it can take up to 10 minutes for it to be visible to people
-async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = None):
+async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = Security(extract_challenge_from_header)):
+    """Get vote outcome for a teacher. Requires a valid challenge token."""
     async with get_session() as session:
         result = await session.execute(
             select(Settings).where(Settings.name == "vote_public_tokenless")

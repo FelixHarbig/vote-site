@@ -2,6 +2,8 @@ from fastapi.responses import JSONResponse
 from typing import Any, Optional
 import os
 import redis.asyncio as aioredis
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 def api_response(
     data: Any = None,
@@ -21,6 +23,31 @@ def api_response(
         status_code=status_code,
         headers=headers
     )
+
+security = HTTPBearer()
+
+from fastapi import Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+# Create security scheme instance
+security = HTTPBearer()
+
+async def extract_challenge_from_header(
+    credentials: HTTPAuthorizationCredentials = Security(security)
+) -> str:
+    """
+    Extract challenge token from Authorization header.
+    Uses HTTPBearer for automatic docs "Authorize" button.
+    """
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Missing authorization")
+    
+    token = credentials.credentials  # HTTPBearer automatically extracts the token
+    if not token:
+        raise HTTPException(status_code=401, detail="Empty token")
+    return token
+
+
 
 redis = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
