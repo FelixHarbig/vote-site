@@ -3,12 +3,11 @@ from sqlalchemy.inspection import inspect
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
 from database.models import Teachers, Votes, Images, VoteCodes, Settings, get_session
-from api.router import router
+from .router import admin_router as router
 import os
 from common.log_handler import log
 from ..utils import api_response
 from datetime import datetime, date
-from .utils import authorize_admin
 from ..schemas import AdminResponse
 
 
@@ -60,8 +59,8 @@ def safe_cast(value, to_type):
 
 
 
-@router.get("/admin/db/list_tables", response_model=AdminResponse)
-async def list_tables(token: str, request: Request):
+@router.get("/db/list_tables", response_model=AdminResponse)
+async def list_tables(request: Request):
     """
     List all available database tables.
     
@@ -69,7 +68,6 @@ async def list_tables(token: str, request: Request):
     database management API. Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -80,16 +78,12 @@ async def list_tables(token: str, request: Request):
         200: Table list successfully retrieved
         401: Unauthorized or invalid token
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
-    log.info(f"Listed tables by admin {request.client.host}")
+    log.debug(f"Listed tables by admin {request.client.host}")
     return api_response(data=list(MODEL_MAP.keys()))
 
 
-@router.get("/admin/db/fetch", response_model=AdminResponse)
+@router.get("/db/fetch", response_model=AdminResponse)
 async def fetch_table(
-    token: str,
     request: Request,
     table: str = Query(...),
     limit: int = Query(100, ge=1, le=1000),
@@ -104,7 +98,6 @@ async def fetch_table(
     Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         table (str): Name of the table to query (teachers, votes, images, votecodes)
         limit (int): Maximum rows to return (1-1000, default 100)
@@ -124,9 +117,6 @@ async def fetch_table(
         - binary data (images) converted to base64 strings
         - all types properly type-cast
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
 
     model = MODEL_MAP.get(table)
     if not model:
@@ -136,14 +126,13 @@ async def fetch_table(
         stmt = select(model).order_by(model.id if not descending else model.id.desc()).offset(offset).limit(limit)
         rows = (await session.execute(stmt)).scalars().all()
 
-    log.info(f"Fetched {len(rows)} rows from table '{table}' (offset {offset}, limit {limit}) by admin {request.client.host}")
+    log.debug(f"Fetched {len(rows)} rows from table '{table}' (offset {offset}, limit {limit}) by admin {request.client.host}")
 
     return api_response(data=[serialize_row(r) for r in rows])
 
 
-@router.post("/admin/db/edit", response_model=AdminResponse)
+@router.post("/db/edit", response_model=AdminResponse)
 async def edit_table(
-    token: str,
     request: Request,
     table: str = Query(...),
     pk: str = Query(...),
@@ -158,7 +147,6 @@ async def edit_table(
     Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         table (str): Name of the table to edit
         pk (str): Primary key value of the row to edit
@@ -183,9 +171,6 @@ async def edit_table(
         - Float: Parsed as float
         - String: Used as-is, empty string becomes NULL
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
 
     model = MODEL_MAP.get(table)
     if not model:
@@ -224,9 +209,8 @@ async def edit_table(
     return api_response(success=True, data=serialize_row(row), message="Row updated")
 
 
-@router.post("/admin/db/edit_row", response_model=AdminResponse)
+@router.post("/db/edit_row", response_model=AdminResponse)
 async def edit_row(
-    token: str,
     request: Request,
     table: str = Query(...),
     pk: str = Query(...),
@@ -239,7 +223,6 @@ async def edit_row(
     calling /admin/db/edit multiple times. Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         table (str): Name of the table to edit
         pk (str): Primary key value of the row to edit
@@ -264,9 +247,6 @@ async def edit_row(
             "overall": 5
         }
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
 
     model = MODEL_MAP.get(table)
     if not model:
@@ -308,9 +288,8 @@ async def edit_row(
             return api_response(success=False, message=f"Unexpected error: {e}")
 
 
-@router.post("/admin/db/add", response_model=AdminResponse)
+@router.post("/db/add", response_model=AdminResponse)
 async def add_table_row(
-    token: str,
     request: Request,
     table: str = Query(...)
 ):
@@ -322,7 +301,6 @@ async def add_table_row(
     Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         table (str): Name of the table to insert into
         body (dict): Request JSON body with field values
@@ -350,9 +328,6 @@ async def add_table_row(
             "subjects": ["Math", "Science"]
         }
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
 
     body = await request.json()
 
@@ -390,9 +365,8 @@ async def add_table_row(
             return api_response(success=False, message=f"DB error: {e}")
 
 
-@router.delete("/admin/db/remove", response_model=AdminResponse)
+@router.delete("/db/remove", response_model=AdminResponse)
 async def remove_row(
-    token: str,
     request: Request,
     table: str = Query(...),
     pk: str = Query(...)
@@ -404,7 +378,6 @@ async def remove_row(
     This is a destructive operation. Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         table (str): Name of the table to delete from
         pk (str): Primary key value of the row to delete
@@ -425,9 +398,6 @@ async def remove_row(
         This action permanently deletes the row and cannot be easily undone.
         Ensure you have appropriate backups before using this endpoint.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
 
     model = MODEL_MAP.get(table)
     if not model:

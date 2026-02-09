@@ -219,7 +219,7 @@ async def get_vote_options(request: Request, authorization: str = Header(..., al
 @router.get("/vote/image", response_class=Response)
 @limiter.limit("10/minute" if os.getenv("DEV").upper() != "TRUE" else "60/minute")
 async def get_image(teacher_id: int, request: Request, challenge: str = Security(extract_challenge_from_header), number: int = 1):
-    if not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"):
+    if not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"): # Demo bypass
         valid = await verify_challenge(challenge=challenge, request=request)
         if valid is not True:
             return valid

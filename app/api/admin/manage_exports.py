@@ -1,5 +1,4 @@
-from api.router import router
-from .utils import authorize_admin
+from .router import admin_router as router
 from ..schemas import AdminResponse
 from fastapi import Request, Response
 from api.utils import api_response
@@ -11,11 +10,8 @@ from common.log_handler import log
 from sqlalchemy import select
 import csv
 
-async def export_model(model_class, filename: str, token: str, request: Request):
+async def export_model(model_class, filename: str, request: Request):
     """Generic CSV export for any SQLAlchemy model"""
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(model_class).order_by(model_class.id)
@@ -44,15 +40,15 @@ async def export_model(model_class, filename: str, token: str, request: Request)
                 "Cache-Control": "no-cache" })
     
 
-@router.get("/admin/export/votecodes")
-async def export_teachers(token: str, request: Request):
-    return await export_model(VoteCodes, "votecodes.csv", token, request)
+@router.get("/export/votecodes")
+async def export_teachers(request: Request):
+    return await export_model(VoteCodes, "votecodes.csv", request)
 
-@router.get("/admin/export/teachers")
-async def export_teachers(token: str, request: Request):
-    return await export_model(Teachers, "teachers.csv", token, request)
+@router.get("/export/teachers")
+async def export_teachers(request: Request):
+    return await export_model(Teachers, "teachers.csv", request)
 
-@router.get("/admin/export/votes")
-async def export_votes(token: str, request: Request):
-    return await export_model(Votes, "votes.csv", token, request)
+@router.get("/export/votes")
+async def export_votes(request: Request):
+    return await export_model(Votes, "votes.csv", request)
 

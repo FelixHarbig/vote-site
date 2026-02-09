@@ -1,4 +1,4 @@
-from api.router import router
+from .router import admin_router as router
 from fastapi_cache.decorator import cache
 from common.log_handler import log
 from fastapi import Request, Body
@@ -8,11 +8,11 @@ import random
 import string
 from api.utils import api_response
 from sqlalchemy import select
-from .utils import authorize_admin
+
 from ..schemas import AdminResponse, VoteSubmissionItem
 
-@router.post("/admin/add_votecodes", response_model=AdminResponse)
-async def add_votecodes(amount: int, token: str, request: Request, grade: int = 0, gender: bool = None, code: str = None):
+@router.post("/add_votecodes", response_model=AdminResponse)
+async def add_votecodes(amount: int, request: Request, grade: int = 0, gender: bool = None, code: str = None):
     """
     Create one or more vote codes.
     
@@ -21,7 +21,7 @@ async def add_votecodes(amount: int, token: str, request: Request, grade: int = 
     
     Args:
         amount (int): Number of codes to generate (1-1000)
-        token (str): Admin authentication token
+
         request (Request): HTTP request object (for client IP logging)
         grade (int, optional): Grade level filter (0-12, default 0). Defaults to 0.
         gender (bool, optional): Gender filter for eligible voters. Defaults to None.
@@ -43,9 +43,7 @@ async def add_votecodes(amount: int, token: str, request: Request, grade: int = 
     Note:
         Generated codes are 8 random alphanumeric characters if not custom specified.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
+
     if amount <= 0 or amount > 1000:
         return api_response(message="Amount must be between 1 and 1000", success=False, status_code=400)
     if grade < 0 or grade > 12:
@@ -71,8 +69,8 @@ async def add_votecodes(amount: int, token: str, request: Request, grade: int = 
     log.info(f"Added {amount} votecodes by admin {request.client.host}")
     return api_response(message=f"Successfully added {amount} votecodes.")
 
-@router.post("/admin/disable_votecode", response_model=AdminResponse)
-async def disable_votecode(code: str, token: str, request: Request, enable: bool = False):
+@router.post("/disable_votecode", response_model=AdminResponse)
+async def disable_votecode(code: str, request: Request, enable: bool = False):
     """
     Disable or re-enable a vote code.
     
@@ -80,9 +78,7 @@ async def disable_votecode(code: str, token: str, request: Request, enable: bool
     enable=True. Requires admin authentication.
     
     Args:
-        code (str): The vote code to modify
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        code (str): The vote code to modify        request (Request): HTTP request object (for client IP logging)
         enable (bool, optional): If True, re-enables the code. If False, disables it. Defaults to False.
     
     Returns:
@@ -96,9 +92,6 @@ async def disable_votecode(code: str, token: str, request: Request, enable: bool
     Note:
         Disabling a code prevents new votes but doesn't affect already-submitted votes.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         votecode = await session.execute(
             select(VoteCodes).filter(VoteCodes.code == code))
@@ -114,18 +107,16 @@ async def disable_votecode(code: str, token: str, request: Request, enable: bool
     log.info(f"Disabled votecode {code} by admin {request.client.host}")
     return api_response(message=f"Successfully disabled votecode {code}.")
 
-@router.get("/admin/list_votecode_amount", response_model=AdminResponse)
+@router.get("/list_votecode_amount", response_model=AdminResponse)
 @cache(expire=60)
-async def list_votecode_amount(token: str, request: Request):
+async def list_votecode_amount(request: Request):
     """
     Get statistics about vote code usage.
     
     Returns counts of total, used, and unused vote codes.
     Results are cached for 60 seconds. Requires admin authentication.
     
-    Args:
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+    Args:        request (Request): HTTP request object (for client IP logging)
     
     Returns:
         dict: JSON response with:
@@ -141,9 +132,6 @@ async def list_votecode_amount(token: str, request: Request):
     Caching:
         - Results cached for 60 seconds
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         total_votecodes = await session.execute(
             select(VoteCodes).where(VoteCodes.disabled == False)
@@ -151,15 +139,15 @@ async def list_votecode_amount(token: str, request: Request):
         total_votecodes = total_votecodes.scalars().all()
         used_votecodes = [vc for vc in total_votecodes if vc.used]
         unused_votecodes = [vc for vc in total_votecodes if not vc.used]
-    log.info(f"Listed votecode amounts by admin {request.client.host}")
+    log.debug(f"Listed votecode amounts by admin {request.client.host}")
     return api_response(data={
         "total_votecodes": len(total_votecodes),
         "used_votecodes": len(used_votecodes),
         "unused_votecodes": len(unused_votecodes),
     })
 
-@router.get("/admin/get_votecode", response_model=AdminResponse)
-async def validate_votecode(code: str, token: str, request: Request):
+@router.get("/get_votecode", response_model=AdminResponse)
+async def validate_votecode(code: str, request: Request):
     """
     Get details about a specific vote code.
     
@@ -167,9 +155,7 @@ async def validate_votecode(code: str, token: str, request: Request):
     Requires admin authentication.
     
     Args:
-        code (str): The vote code to look up
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        code (str): The vote code to look up        request (Request): HTTP request object (for client IP logging)
     
     Returns:
         dict: JSON response with:
@@ -186,16 +172,13 @@ async def validate_votecode(code: str, token: str, request: Request):
         404: Vote code not found
         401: Unauthorized or invalid token
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         votecode = await session.execute(
             select(VoteCodes).filter(VoteCodes.code == code))
         votecode = votecode.scalars().first()
         if not votecode:
             return api_response(message="Votecode not found", success=False, status_code=404)
-    log.info(f"Validated votecode {code} by admin {request.client.host}")
+    log.debug(f"Validated votecode {code} by admin {request.client.host}")
     return api_response(data={
         "code": votecode.code,
         "used": votecode.used,
@@ -205,17 +188,15 @@ async def validate_votecode(code: str, token: str, request: Request):
         "continuation_key": votecode.continuation_key,
     })
 
-@router.post("/admin/disable_all_votescodes", response_model=AdminResponse)
-async def disable_votes_for_teacher(token: str, really_sure: bool, request: Request):
+@router.post("/disable_all_votescodes", response_model=AdminResponse)
+async def disable_votes_for_teacher(really_sure: bool, request: Request):
     """
     Disable all active vote codes at once.
     
     Mass-disables all currently active vote codes. This is a dangerous operation
     that requires explicit confirmation. Requires admin authentication.
     
-    Args:
-        token (str): Admin authentication token
-        really_sure (bool): Must be True to confirm this destructive action
+    Args:        really_sure (bool): Must be True to confirm this destructive action
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -230,9 +211,6 @@ async def disable_votes_for_teacher(token: str, really_sure: bool, request: Requ
         This action disables ALL active vote codes. Use with caution!
         Already-used codes are not affected as they're already inactive.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     if not really_sure:
         return api_response(message="You must confirm this action by setting really_sure to True", success=False, status_code=400)
     async with get_session() as session:
@@ -252,8 +230,8 @@ async def disable_votes_for_teacher(token: str, really_sure: bool, request: Requ
     API endpoints for managing Votes themselves, not the VoteCodes
 """
 
-@router.post("/admin/add_vote", response_model=AdminResponse)
-async def add_vote(teacher_id: int, token: str, request: Request, vote_data: VoteSubmissionItem = Body(...), ip_address: str = None):
+@router.post("/add_vote", response_model=AdminResponse)
+async def add_vote(teacher_id: int, request: Request, vote_data: VoteSubmissionItem = Body(...), ip_address: str = None):
     """
     Manually add a vote for a teacher.
     
@@ -262,9 +240,7 @@ async def add_vote(teacher_id: int, token: str, request: Request, vote_data: Vot
     Requires admin authentication.
     
     Args:
-        teacher_id (int): ID of the teacher receiving the vote (query parameter)
-        token (str): Admin authentication token (query parameter)
-        request (Request): HTTP request object (for client IP logging)
+        teacher_id (int): ID of the teacher receiving the vote (query parameter)        request (Request): HTTP request object (for client IP logging)
         vote_data (VoteSubmissionItem): Vote data in request body
             - Any combination of vote fields can be provided (all optional)
             - All numeric vote fields must be between 1-10
@@ -283,9 +259,6 @@ async def add_vote(teacher_id: int, token: str, request: Request, vote_data: Vot
         This bypasses the normal vote code challenge flow and is for admin use only.
         Automatically supports all vote types - no schema updates needed when adding new fields!
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     
     # Get all valid vote field names from Votes model
     votes_model_fields = {col.name for col in Votes.__table__.columns 
@@ -332,8 +305,8 @@ async def add_vote(teacher_id: int, token: str, request: Request, vote_data: Vot
     log.info(f"Added vote for teacher {teacher_id} with fields {list(vote_fields.keys())} by admin {request.client.host}")
     return api_response(message=f"Successfully added vote with {len(vote_fields)} field(s).")
 
-@router.get("/admin/get_votes", response_model=AdminResponse)
-async def get_votes(teacher_id: int, token: str, request: Request, limit: int = 100, offset: int = 0):
+@router.get("/get_votes", response_model=AdminResponse)
+async def get_votes(teacher_id: int, request: Request, limit: int = 100, offset: int = 0):
     """
     Get votes for a specific teacher with pagination.
     
@@ -341,9 +314,7 @@ async def get_votes(teacher_id: int, token: str, request: Request, limit: int = 
     Results support pagination. Requires admin authentication.
     
     Args:
-        teacher_id (int): ID of the teacher
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        teacher_id (int): ID of the teacher        request (Request): HTTP request object (for client IP logging)
         limit (int, optional): Maximum number of votes to return (default 100). Defaults to 100.
         offset (int, optional): Number of votes to skip for pagination (default 0). Defaults to 0.
     
@@ -359,9 +330,6 @@ async def get_votes(teacher_id: int, token: str, request: Request, limit: int = 
         - limit and offset control which votes are returned
         - Use offset=100, limit=100 to get votes 101-200, etc.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Votes).where(Votes.teacher_id == teacher_id).offset(offset).limit(limit)
@@ -385,11 +353,11 @@ async def get_votes(teacher_id: int, token: str, request: Request, limit: int = 
                     vote_dict[col_name] = value
             votes_data.append(vote_dict)
     
-    log.info(f"Retrieved {len(votes_data)} votes for teacher {teacher_id} by admin {request.client.host}")
+    log.debug(f"Retrieved {len(votes_data)} votes for teacher {teacher_id} by admin {request.client.host}")
     return api_response(data=votes_data)
 
-@router.get("/admin/get_vote_count", response_model=AdminResponse)
-async def get_vote_count(teacher_id: int, token: str, request: Request):
+@router.get("/get_vote_count", response_model=AdminResponse)
+async def get_vote_count(teacher_id: int, request: Request):
     """
     Get vote statistics for a teacher.
     
@@ -397,9 +365,7 @@ async def get_vote_count(teacher_id: int, token: str, request: Request):
     Requires admin authentication.
     
     Args:
-        teacher_id (int): ID of the teacher
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        teacher_id (int): ID of the teacher        request (Request): HTTP request object (for client IP logging)
     
     Returns:
         dict: JSON response with:
@@ -412,9 +378,6 @@ async def get_vote_count(teacher_id: int, token: str, request: Request):
         404: Teacher not found
         401: Unauthorized or invalid token
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         teacher_result = await session.execute(
             select(Teachers).where(Teachers.id == teacher_id)
@@ -446,15 +409,15 @@ async def get_vote_count(teacher_id: int, token: str, request: Request):
             for field_name in votes_model_fields:
                 averages[field_name] = None
 
-    log.info(f"Retrieved vote count for teacher {teacher_id} by admin {request.client.host}")
+    log.debug(f"Retrieved vote count for teacher {teacher_id} by admin {request.client.host}")
     return api_response(data={
         "vote_count": vote_count,
         "averages": averages,
     })
 
 
-@router.delete("/admin/delete_votes", response_model=AdminResponse)
-async def delete_votes(teacher_id: int, sure: bool, token: str, request: Request):
+@router.delete("/delete_votes", response_model=AdminResponse)
+async def delete_votes(teacher_id: int, sure: bool, request: Request):
     """
     Delete all votes for a specific teacher.
     
@@ -463,9 +426,7 @@ async def delete_votes(teacher_id: int, sure: bool, token: str, request: Request
     
     Args:
         teacher_id (int): ID of the teacher whose votes to delete
-        sure (bool): Must be True to confirm this destructive action
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        sure (bool): Must be True to confirm this destructive action        request (Request): HTTP request object (for client IP logging)
     
     Returns:
         dict: JSON response with success status and message
@@ -479,9 +440,6 @@ async def delete_votes(teacher_id: int, sure: bool, token: str, request: Request
         This action permanently deletes all votes for the teacher.
         This cannot be easily undone without database backups.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     if not sure:
         return api_response(message="You must confirm this action by setting sure to True", success=False, status_code=400)
     async with get_session() as session:
@@ -496,8 +454,8 @@ async def delete_votes(teacher_id: int, sure: bool, token: str, request: Request
     return api_response(message="Successfully deleted votes.")
 
 
-@router.delete("/admin/nuke_ip", response_model=AdminResponse)
-async def nuke_ip(ip_address: str, token: str, request: Request, all_votes: bool = False):
+@router.delete("/nuke_ip", response_model=AdminResponse)
+async def nuke_ip(ip_address: str, request: Request, all_votes: bool = False):
     """
     Remove all votes associated with a specific IP address.
     
@@ -505,9 +463,7 @@ async def nuke_ip(ip_address: str, token: str, request: Request, all_votes: bool
     Requires admin authentication.
     
     Args:
-        ip_address (str): The IP address to delete
-        token (str): Admin authentication token
-        request (Request): HTTP request object (for client IP logging)
+        ip_address (str): The IP address to delete        request (Request): HTTP request object (for client IP logging)
         all_votes (bool, optional): If True, deletes the votes entirely.
     
     Returns:
@@ -520,9 +476,6 @@ async def nuke_ip(ip_address: str, token: str, request: Request, all_votes: bool
     Note:
         This action removes votes based on IP address and may affect multiple teachers.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Votes).where(Votes.ip_address == ip_address)

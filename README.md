@@ -1,72 +1,57 @@
 # Teacher Voting Backend
 
-A dockerized FastAPI-based backend for conducting teacher evaluations with PostgreSQL and Redis support. This system allows students to securely vote on teachers using one-time vote codes.
+A secure, dockerized backend for teacher evaluations using FastAPI, PostgreSQL, and Redis.
 
-## 📋 Project Overview
+## Project Overview
 
-This project provides a secure voting system where:
+- **Admins**: Secure management via TOTP (Time-based One-Time Password) and JWT authentication.
+- **Students**: Fraud-resistant voting using a challenge-response system.
+- **Security**: Comprehensive rate limiting, IP tracking, and single-use vote codes.
+- **Performance**: Redis caching for high-load endpoints.
 
-- **Admins** generate vote codes and manage teacher/vote data through database routes
-- **Students** vote on teachers using a challenge-response verification system to prevent fraud
-- **Vote codes** are single-use and challenge-based for security
-- **Rate limiting** protects against brute-force attacks on vote codes
-- **Caching** improves performance for teacher list queries
+## Admin Authentication
 
-## 🔄 Voting Flow
+The system uses a secure 2FA implementation for administrative access.
 
-### Student Voting Process
+### Creating an Admin
+To create a new admin account with TOTP protection:
 
-1. **Verify** (`POST /api/vote/verify`): Student submits vote code
+```bash
+python -m app.cli.create_admin --username <username> --password <password>
+```
 
-   - Receives a 32-character challenge token
-   - Rate limited to prevent code brute-forcing
-2. **Solve** (`POST /api/vote/solve`): Student confirms challenge
+This will generate a TOTP secret and QR code URI. Scan this with an authenticator app (e.g., Google Authenticator) to complete setup.
 
-   - Must submit both vote code and challenge
-   - Returns list of available teachers
-   - Teacher list is cached for performance
-3. **Get Teachers** (`GET /api/vote/get_teachers`): Retrieve cached teacher list
+### Authentication Flow
+1. **Login**: POST credentials + TOTP code to `/api/auth/verify_totp`.
+2. **Token**: Receive a JWT Bearer token.
+3. **Access**: Include `Authorization: Bearer <token>` in headers for all `/api/admin/*` endpoints.
 
-   - Alternative endpoint if cache expires
-   - Requires valid challenge
-4. **Submit** (`POST /api/vote/submit`): Submit vote(s)
+## Voting Flow
 
-   - Can vote on multiple teachers at once
-   - Both challenge and vote code are invalidated after submission
-   - **Important**: All teachers must be submitted in a single request
+1. **Verify** (`POST /api/vote/verify`): Submit vote code to receive a challenge token.
+2. **Solve** (`POST /api/vote/solve`): Submit code + challenge to unlock teacher list.
+3. **Vote** (`POST /api/vote/submit`): Submit ratings for one or more teachers. The code is invalidated upon success.
 
-### Frontend Implementation Notes
+## Environment Configuration
 
-For optimal user experience:
-
-- Auto-run challenge after vote code entry
-- Cache challenge token and teacher list in localStorage/session storage
-- Allow users to vote on multiple teachers across sessions without losing progress
-- Show clear rate-limit warnings before users appempt multiple vote codes (48h ban)
-- Aggregate all teacher votes before final submission
-
-## 🔧 Environment Configuration
-
-Create a `.env` file in the project root with the following variables:
+Create a `.env` file in the project root:
 
 ```env
-# Database Configuration
-DATABASE_URL=postgresql://user:password@postgres:5432/voting_db
-POSTGRES_USER=user
-POSTGRES_PASSWORD=password
-POSTGRES_DB=voting_db
-POSTGRES_HOST=postgres
+# Database
+DATABASE_URL=postgresql://user:pass@postgres:5432/voting_db
 
-# Redis Configuration (Caching & Session Management)
-REDIS_URL=redis://:password@redis:6379
-REDIS_PASSWORD=password
-REDIS_HOST=redis
+# Redis
+REDIS_URL=redis://:pass@redis:6379
 
-# Application Configuration
-FRONTEND_URL=http://localhost:3000
+# Security
+JWT_SECRET_KEY=change_this_to_a_secure_random_string
+JWT_ACCESS_TOKEN_EXPIRE_HOURS=12
 ADMIN_SECRET=your_secret_admin_key_here
-MAX_FAILED_ATTEMPTS=5
-DEV=TRUE  # Set to FALSE in production
+
+# Application
+FRONTEND_URL=http://localhost:3000
+DEV=FALSE
 ```
 
 ## Usage
@@ -74,117 +59,29 @@ DEV=TRUE  # Set to FALSE in production
 ### Local Development
 
 1. **Install dependencies**:
-
    ```bash
    pip install -r requirements.txt
    ```
-2. **Run development server**:
 
+2. **Run server**:
    ```bash
    python app/main.py
    ```
-3. **Access the application**:
 
-   - API: `http://localhost:8001`
-   - Docs (dev only): `http://localhost:8001/docs`
+3. **Access API**:
+   - URL: `http://localhost:8001`
+   - Docs: `http://localhost:8001/docs` (only when DEV=TRUE)
 
-## 📊 Database Schema
+## Database Management
 
-### Tables
+- **Viewer**: Run `docker run -p 8081:8081 sosedoff/pgweb` to browse data at `http://localhost:8081`.
+- **Migrations**: Use Alembic for schema changes.
+  - Apply: `alembic upgrade head`
+  - Create: `alembic revision --autogenerate -m "message"`
 
-| Table          | Purpose                                                  |
-| -------------- | -------------------------------------------------------- |
-| `teachers`   | Teacher profiles with subjects, descriptions, and images |
-| `votes`      | Individual vote records with timestamps and IP tracking  |
-| `images`     | Teacher profile images (stored as binary data)           |
-| `vote_codes` | One-time use vote codes with challenge tracking          |
+## Security Features
 
-### Key Models
-
-**Teachers**: Stores teacher information including name, subjects, gender, and profile images
-**Votes**: Records votes with teacher_id, timestamp, overall rating, and IP address
-**VoteCodes**: Tracks vote codes with continuation keys for challenge-response flow
-
-## 🛠️ Development & Debugging
-
-### Database Viewer
-
-Access a visual database editor:
-
-```bash
-docker run -p 8081:8081 sosedoff/pgweb
-```
-
-Then visit `http://localhost:8081`
-
-### Useful Alembic Commands
-
-**Create migrations**:
-
-```bash
-alembic revision --autogenerate -m "describe your changes"
-```
-
-**Apply migrations**:
-
-```bash
-alembic upgrade head
-```
-
-**Rollback last migration**:
-
-```bash
-alembic downgrade -1
-```
-
-### Common Issues & Fixes
-
-**Issue**: Docker build fails with psycopg2
-
-- **Fix**: Ensure `requirements.txt` contains `psycopg2-binary` (not `psycopg2`)
-
-**Issue**: Alembic can't find models
-
-- **Fix**: Add `prepend_sys_path = ./app` to `alembic.ini`
-
-**Issue**: Async PostgreSQL errors in Alembic
-
-- **Fix**: Use synchronous connections in Alembic migrations (already configured)
-
-## 🔒 Security Considerations
-
-- **Rate Limiting**: Vote code verification is limited
-- **Challenge-Response**: Prevents unauthorized votes without valid code
-- **IP Tracking**: Votes are logged with IP addresses for auditing
-- **Non-Root Docker User**: Container runs as `appuser` for security
-- **CORS Configuration**: Restricted to specified frontend origins
-- **Dev Mode**: Disables OpenAPI docs in production
-
-## 🚨 Known Limitations & TODOs
-
-- [ ] Missing additional vote criteria fields (TODO)
-- [ ] No persistent volume configuration in docker-compose (you need to change this yourself)
-- [ ] When using /admin/db/edit on the picture database there are some errors. In general, it is recommended to use edit_row.
-- [ ] The .env variables could bee in a class which can be fetched.
-
-## 💾 Docker Architecture Notes
-
-The project uses Docker Compose with separate services:
-
-- **PostgreSQL**: Primary data storage
-- **Redis**: Caching and session management
-- **Backend**: FastAPI application
-
-This is a bit overkill though.
-
-## 📝 Contributing
-
-When making changes:
-
-1. Create a new Alembic migration for database changes
-2. Test the code
-3. Follow existing code style (except if your's is better) and logging patterns
-
-## 📄 License
-
-TODO
+- **Rate Limiting**: Strict limits on verification and submission endpoints.
+- **Anti-Abuse**: automatic IP banning for repeated failed attempts.
+- **Input Validation**: All inputs validated via Pydantic models.
+- **Secure Headers**: CORS restricted to configured origins.

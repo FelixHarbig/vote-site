@@ -1,4 +1,4 @@
-from api.router import router
+from .router import admin_router as router
 from fastapi_cache.decorator import cache
 from common.log_handler import log
 from fastapi import Request
@@ -8,12 +8,11 @@ from api.utils import api_response
 from sqlalchemy import select
 import base64
 from typing import List
-from .utils import authorize_admin
 from ..schemas import AdminResponse
 from database.utils import fetch_teachers
 
-@router.post("/admin/add_teacher", response_model=AdminResponse)
-async def add_teacher(name: str, gender: bool, subjects: List[str], token: str, request: Request):
+@router.post("/add_teacher", response_model=AdminResponse)
+async def add_teacher(name: str, gender: bool, subjects: List[str], request: Request):
     """
     Add a new teacher to the system.
     
@@ -23,7 +22,6 @@ async def add_teacher(name: str, gender: bool, subjects: List[str], token: str, 
         name (str): Full name of the teacher
         gender (bool): Gender identifier (True/False)
         subjects (List[str]): List of subjects taught by the teacher
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -37,9 +35,6 @@ async def add_teacher(name: str, gender: bool, subjects: List[str], token: str, 
     Note:
         Requires valid admin token. Teacher will be enabled by default.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         teacher = Teachers(name=name, gender=gender, subjects=subjects)
         session.add(teacher)
@@ -47,8 +42,8 @@ async def add_teacher(name: str, gender: bool, subjects: List[str], token: str, 
     log.info(f"Added teacher {name} by admin {request.client.host}")
     return api_response(message="Successfully added teacher.")
 
-@router.post("/admin/delete_teacher", response_model=AdminResponse)
-async def delete_teacher(teacher_id: int, token: str, request: Request):
+@router.post("/delete_teacher", response_model=AdminResponse)
+async def delete_teacher(teacher_id: int, request: Request):
     """
     Permanently delete a teacher from the system.
     
@@ -56,7 +51,6 @@ async def delete_teacher(teacher_id: int, token: str, request: Request):
     
     Args:
         teacher_id (int): ID of the teacher to delete
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -70,9 +64,6 @@ async def delete_teacher(teacher_id: int, token: str, request: Request):
     Warning:
         This action is permanent and cannot be undone. Associated votes may be affected.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Teachers).where(Teachers.id == teacher_id)
@@ -85,9 +76,9 @@ async def delete_teacher(teacher_id: int, token: str, request: Request):
     log.info(f"Deleted teacher {teacher_id} by admin {request.client.host}")
     return api_response(message="Successfully deleted teacher.")
 
-@router.get("/admin/list_teachers", response_model=AdminResponse)
+@router.get("/list_teachers", response_model=AdminResponse)
 @cache(expire=60)
-async def list_teachers(token: str, request: Request):
+async def list_teachers(request: Request):
     """
     List all teachers in the system.
     
@@ -95,7 +86,6 @@ async def list_teachers(token: str, request: Request):
     Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -111,9 +101,6 @@ async def list_teachers(token: str, request: Request):
         - Results cached for 60 seconds
         - Reduces database load for frequent admin checks
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     teachers_list = await fetch_teachers()
     # async with get_session() as session:
     #     result = await session.execute(select(Teachers))
@@ -126,11 +113,11 @@ async def list_teachers(token: str, request: Request):
     #             "gender": t.gender,
     #             "subjects": t.subjects,
     #         }) # could be useful if you add admin stuff to teachers later. should make a new option in fetch_teachers tho
-    log.info(f"Listed {len(teachers_list)} teachers by admin {request.client.host}")
+    log.debug(f"Listed {len(teachers_list)} teachers by admin {request.client.host}")
     return api_response(data=teachers_list)
 
-@router.post("/admin/disable_teacher", response_model=AdminResponse)
-async def disable_teacher(teacher_id: int, disable: bool, token: str, request: Request):
+@router.post("/disable_teacher", response_model=AdminResponse)
+async def disable_teacher(teacher_id: int, disable: bool, request: Request):
     """
     Enable or disable a teacher.
     
@@ -140,7 +127,6 @@ async def disable_teacher(teacher_id: int, disable: bool, token: str, request: R
     Args:
         teacher_id (int): ID of the teacher to modify
         disable (bool): True to disable, False to enable
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -154,9 +140,6 @@ async def disable_teacher(teacher_id: int, disable: bool, token: str, request: R
     Note:
         Disabling a teacher does not delete their record or associated votes.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Teachers).where(Teachers.id == teacher_id)
@@ -169,8 +152,8 @@ async def disable_teacher(teacher_id: int, disable: bool, token: str, request: R
     log.info(f"{'Disabled' if disable else 'Enabled'} teacher {teacher_id} by admin {request.client.host}")
     return api_response(message=f"Successfully {'disabled' if disable else 'enabled'} teacher.")
 
-@router.get("/admin/get_teacher", response_model=AdminResponse)
-async def get_teacher(teacher_id: int, token: str, request: Request):
+@router.get("/get_teacher", response_model=AdminResponse)
+async def get_teacher(teacher_id: int, request: Request):
     """
     Get details of a specific teacher.
     
@@ -179,7 +162,6 @@ async def get_teacher(teacher_id: int, token: str, request: Request):
     
     Args:
         teacher_id (int): ID of the teacher to retrieve
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -192,9 +174,6 @@ async def get_teacher(teacher_id: int, token: str, request: Request):
         404: Teacher not found
         401: Unauthorized or invalid token
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Teachers).where(Teachers.id == teacher_id)
@@ -209,5 +188,5 @@ async def get_teacher(teacher_id: int, token: str, request: Request):
             "subjects": teacher.subjects,
             "disabled": teacher.disabled,
         }
-    log.info(f"Retrieved teacher {teacher_id} by admin {request.client.host}")
+    log.debug(f"Retrieved teacher {teacher_id} by admin {request.client.host}")
     return api_response(data=teacher_data)

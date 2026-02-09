@@ -26,26 +26,27 @@ def api_response(
 
 security = HTTPBearer()
 
-from fastapi import Security
+from fastapi import Security, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # Create security scheme instance
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 async def extract_challenge_from_header(
-    credentials: HTTPAuthorizationCredentials = Security(security)
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    challenge: Optional[str] = Query(None)
 ) -> str:
     """
-    Extract challenge token from Authorization header.
-    Uses HTTPBearer for automatic docs "Authorize" button.
+    Extract challenge token from Authorization header (Bearer) OR Query param.
+    Priority: Header > Query
     """
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Missing authorization")
+    if credentials and credentials.credentials:
+        return credentials.credentials
     
-    token = credentials.credentials  # HTTPBearer automatically extracts the token
-    if not token:
-        raise HTTPException(status_code=401, detail="Empty token")
-    return token
+    if challenge:
+        return challenge
+        
+    raise HTTPException(status_code=401, detail="Missing authorization (Header or Query)")
 
 
 

@@ -1,4 +1,4 @@
-from api.router import router
+from .router import admin_router as router
 from fastapi_cache.decorator import cache
 from common.log_handler import log
 from fastapi import Request, Body
@@ -8,14 +8,12 @@ from api.utils import api_response
 from sqlalchemy import select
 import base64
 from ..rate_limiter import limiter
-from .utils import authorize_admin
 from ..schemas import AdminResponse
 
 
 
-@router.post("/admin/add_image", response_model=AdminResponse)
+@router.post("/add_image", response_model=AdminResponse)
 async def add_image(
-    token: str,
     request: Request,
     teacher_id: int = Body(...),
     image_binary: str = Body(...),
@@ -27,7 +25,6 @@ async def add_image(
     Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
         teacher_id (int): ID of the teacher
         image_binary (str): Base64-encoded image data
@@ -44,9 +41,6 @@ async def add_image(
         Image must be base64-encoded for transmission.
         Stored as binary data in the database.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     try:
         image_bytes = base64.b64decode(image_binary, validate=True)
     except Exception:
@@ -62,10 +56,10 @@ async def add_image(
     log.info(f"Added image for teacher {teacher_id} by admin {request.client.host}")
     return api_response(message="Successfully added image.")
 
-@router.get("/admin/get_images", response_model=AdminResponse)
+@router.get("/get_images", response_model=AdminResponse)
 @limiter.limit("20/minute")
 @cache(expire=60)
-async def get_images(teacher_id: int, token: str, request: Request):
+async def get_images(teacher_id: int, request: Request):
     """
     Get all profile images for a teacher.
     
@@ -75,7 +69,6 @@ async def get_images(teacher_id: int, token: str, request: Request):
     
     Args:
         teacher_id (int): ID of the teacher
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -92,9 +85,6 @@ async def get_images(teacher_id: int, token: str, request: Request):
     Caching:
         - Results cached for 60 seconds
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Images).where(Images.teacher_id == teacher_id)
@@ -107,11 +97,11 @@ async def get_images(teacher_id: int, token: str, request: Request):
                 "teacher_id": img.teacher_id,
                 "image": base64.b64encode(img.image).decode("utf-8"), # this is important
             })
-    log.info(f"Retrieved {len(images_data)} images for teacher {teacher_id} by admin {request.client.host}")
+    log.debug(f"Retrieved {len(images_data)} images for teacher {teacher_id} by admin {request.client.host}")
     return api_response(data=images_data)
 
-@router.post("/admin/delete_image", response_model=AdminResponse)
-async def delete_image(image_id: int, token: str, request: Request):
+@router.post("/delete_image", response_model=AdminResponse)
+async def delete_image(image_id: int, request: Request):
     """
     Delete a specific teacher profile image.
     
@@ -119,7 +109,6 @@ async def delete_image(image_id: int, token: str, request: Request):
     
     Args:
         image_id (int): ID of the image to delete
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -130,9 +119,6 @@ async def delete_image(image_id: int, token: str, request: Request):
         404: Image not found
         401: Unauthorized or invalid token
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Images).where(Images.id == image_id)
@@ -145,8 +131,8 @@ async def delete_image(image_id: int, token: str, request: Request):
     log.info(f"Deleted image {image_id} by admin {request.client.host}")
     return api_response(message="Successfully deleted image.")
 
-@router.post("/admin/disable_image", response_model=AdminResponse)
-async def disable_image(image_id: int, disable: bool, token: str, request: Request):
+@router.post("/disable_image", response_model=AdminResponse)
+async def disable_image(image_id: int, disable: bool, request: Request):
     """
     Enable or disable a teacher profile image.
     
@@ -156,7 +142,6 @@ async def disable_image(image_id: int, disable: bool, token: str, request: Reque
     Args:
         image_id (int): ID of the image to modify
         disable (bool): True to disable, False to enable
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -170,9 +155,6 @@ async def disable_image(image_id: int, disable: bool, token: str, request: Reque
     Note:
         Disabling an image does not delete it, just prevents display.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Images).where(Images.id == image_id)
@@ -185,9 +167,9 @@ async def disable_image(image_id: int, disable: bool, token: str, request: Reque
         log.info(f"Disabled/enabled image {image_id} by admin {request.client.host}")
     return api_response(message=f"Successfully {'disabled' if disable else 'enabled'} image.")
 
-@router.get("/admin/list_images", response_model=AdminResponse)
+@router.get("/list_images", response_model=AdminResponse)
 @cache(expire=60)
-async def list_images(token: str, request: Request):
+async def list_images(request: Request):
     """
     List all teacher profile images in the system.
     
@@ -195,7 +177,6 @@ async def list_images(token: str, request: Request):
     Results are cached for 60 seconds. Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -213,9 +194,6 @@ async def list_images(token: str, request: Request):
         This endpoint returns metadata only, not the actual image data.
         Use /admin/get_images to retrieve actual image content.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Images)
@@ -229,11 +207,11 @@ async def list_images(token: str, request: Request):
                 "disabled": img.disabled,
                 "timestamp": img.timestamp,
             })
-    log.info(f"Listed {len(images_data)} images by admin {request.client.host}")
+    log.debug(f"Listed {len(images_data)} images by admin {request.client.host}")
     return api_response(data=images_data)
 
-@router.post("/admin/disable_all_images", response_model=AdminResponse)
-async def disable_all_images(token: str, request: Request):
+@router.post("/disable_all_images", response_model=AdminResponse)
+async def disable_all_images(request: Request):
     """
     Disable all active teacher profile images at once.
     
@@ -241,7 +219,6 @@ async def disable_all_images(token: str, request: Request):
     displayed to students during voting. Requires admin authentication.
     
     Args:
-        token (str): Admin authentication token
         request (Request): HTTP request object (for client IP logging)
     
     Returns:
@@ -254,9 +231,6 @@ async def disable_all_images(token: str, request: Request):
     Warning:
         This disables ALL active images. Images are not deleted, just hidden.
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     async with get_session() as session:
         result = await session.execute(
             select(Images).where(Images.disabled == False)

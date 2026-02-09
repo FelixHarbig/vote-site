@@ -86,6 +86,15 @@ class Settings(VotingEngine):
     name = sqlalchemy.Column(sqlalchemy.String, unique=True, nullable=False)
     enabled = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False)
 
+class Admins(VotingEngine):
+    __tablename__ = "admins"
+    id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True)
+    username = sqlalchemy.Column(sqlalchemy.String, unique=True, nullable=False)
+    password_hash = sqlalchemy.Column(sqlalchemy.String, nullable=False)
+    totp_secret = sqlalchemy.Column(sqlalchemy.String, nullable=False)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, server_default=sqlalchemy.func.now())
+    last_login = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+
 AsyncSessionLocal = sqlalchemy.ext.asyncio.async_sessionmaker(voting_engine, class_=sqlalchemy.ext.asyncio.AsyncSession, expire_on_commit=False)
 
 @asynccontextmanager

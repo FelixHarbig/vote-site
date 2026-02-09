@@ -1,5 +1,4 @@
-from api.router import router
-from .utils import authorize_admin
+from .router import admin_router as router
 from ..schemas import AdminResponse
 from fastapi import Request, UploadFile
 from api.utils import api_response
@@ -11,14 +10,11 @@ import string
 from common.log_handler import log
 from sqlalchemy import select
 
-@router.post("/admin/upload/votecodes", response_model=AdminResponse)
-async def upload_votecodes(token: str, request: Request, uploaded_file: UploadFile, enable_code_generation: bool = False):
+@router.post("/upload/votecodes", response_model=AdminResponse)
+async def upload_votecodes(request: Request, uploaded_file: UploadFile, enable_code_generation: bool = False):
     """
         Accetped Fields: code | grade (0-12 integer) | gender (true,false) | disabled
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     if not uploaded_file.filename.endswith(".csv"):
         return api_response(message="Invalid file type", success=False, status_code=400)
     csvReader = csv.DictReader(codecs.iterdecode(uploaded_file.file, 'utf-8'))
@@ -75,13 +71,11 @@ async def upload_votecodes(token: str, request: Request, uploaded_file: UploadFi
 # for teacher upload: "apples,bananas,pears"
 # needed fields: name, gender, subjects, description
 
-@router.post("/admin/upload/teachers")
-async def upload_teachers(token: str, request: Request, uploaded_file: UploadFile, allow_empty_subjects: bool = False, ignore_duplicates: bool = False):
+@router.post("/upload/teachers")
+async def upload_teachers(request: Request, uploaded_file: UploadFile, allow_empty_subjects: bool = False, ignore_duplicates: bool = False):
     """
     Docstring for upload_teachers
     
-    :param token: Admin token
-    :type token: str
     :param request: automatic
     :type request: Request
     :param uploaded_file: Upload file, should have: name, gender, subjects (as "maths,comp sci,pe"), disabled
@@ -91,9 +85,6 @@ async def upload_teachers(token: str, request: Request, uploaded_file: UploadFil
     :param ignore_duplicates: False by default
     :type ignore_duplicates: bool
     """
-    auth = await authorize_admin(token, request)
-    if auth is not True:
-        return auth
     if not uploaded_file.filename.endswith(".csv"):
         return api_response(message="Invalid file type", success=False, status_code=400)
     csvReader = csv.DictReader(codecs.iterdecode(uploaded_file.file, 'utf-8'))

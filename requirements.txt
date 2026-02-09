@@ -11,6 +11,9 @@ DateTime
 pydantic
 asyncpg
 python-multipart
+PyJWT
+pyotp
+bcrypt
 
 # optional
 alembic
