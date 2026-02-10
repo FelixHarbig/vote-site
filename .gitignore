@@ -4,6 +4,8 @@ instance
 .vscode
 benb
 frontend
+frontendv2
+plans
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

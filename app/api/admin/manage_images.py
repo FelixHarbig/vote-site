@@ -205,7 +205,6 @@ async def list_images(request: Request):
                 "id": img.id,
                 "teacher_id": img.teacher_id,
                 "disabled": img.disabled,
-                "timestamp": img.timestamp,
             })
     log.debug(f"Listed {len(images_data)} images by admin {request.client.host}")
     return api_response(data=images_data)

@@ -195,18 +195,21 @@ async def get_teachers(request: Request, challenge: str = Security(extract_chall
         Challenge must be a valid challenge from /vote/solve.
     """
     log.info(f"Teachers request from {request.client.host} with challenge {challenge}")
-    valid = await verify_challenge(challenge=challenge, request=request)
-    if valid is not True:
-        return valid
+    async with get_session() as session:
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_public_tokenless")
+        )
+        setting = result.scalars().first()
+        if not setting.enabled:
+            valid = await verify_challenge(challenge=challenge, request=request)
+            if valid is not True:
+                return valid
     teachers = await fetch_teachers()
     log.info(f"Teachers successfully requested from {request.client.host}")
     return api_response(message="Teachers successfully retrieved.", data=teachers)
 
 @router.get("/vote/options")
-async def get_vote_options(request: Request, authorization: str = Header(..., alias="Authorization")):
-    success, challenge = await extract_challenge_from_header(authorization)
-    if not success:
-        return challenge
+async def get_vote_options(request: Request, challenge: str = Security(extract_challenge_from_header)):
     log.debug(f"Vote options requested from {request.client.host}")
     valid = await verify_challenge(challenge=challenge, request=request)
     if valid is not True:
@@ -217,7 +220,7 @@ async def get_vote_options(request: Request, authorization: str = Header(..., al
     return api_response(message="Vote options retrieved.", data=options)
 
 @router.get("/vote/image", response_class=Response)
-@limiter.limit("10/minute" if os.getenv("DEV").upper() != "TRUE" else "60/minute")
+@limiter.limit("30/minute" if os.getenv("DEV").upper() != "TRUE" else "60/minute") # normally you'd use a cdn or something, if you have more than 30 teachers this needs to be adjusted
 async def get_image(teacher_id: int, request: Request, challenge: str = Security(extract_challenge_from_header), number: int = 1):
     if not (challenge == os.getenv("ADMIN_SECRET") and os.getenv("DEV").upper() == "TRUE"): # Demo bypass
         valid = await verify_challenge(challenge=challenge, request=request)
@@ -355,6 +358,32 @@ async def submit_vote(request: Request, vote_data: Dict[str, VoteSubmissionItem]
         return api_response(message="Unexpected error during vote submission.", success=False, status_code=500)
     
 
+@router.get("/vote/get_vote_status")
+@limiter.limit("10/minute")
+async def get_vote_status(request: Request):
+    async with get_session() as session:
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_locked")
+        )
+        setting = result.scalars().first()
+        vote_locked = True if setting and setting.enabled else False
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_public_tokenless")
+        )
+        setting = result.scalars().first()
+        vote_public_tokenless = True if setting and setting.enabled else False
+        result = await session.execute(
+            select(Settings).where(Settings.name == "vote_public")
+        )
+        setting = result.scalars().first()
+        vote_public = True if setting and setting.enabled else False
+    return api_response(data={
+        "vote_locked": vote_locked,
+        "vote_public_tokenless": vote_public_tokenless,
+        "vote_public": vote_public
+    })
+            
+
 @router.get("/get_vote_outcome", response_model=VotecountResponse)
 @cache(600) # !!! If you enable vote_public it can take up to 10 minutes for it to be visible to people
 async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = Security(extract_challenge_from_header)):
@@ -378,7 +407,7 @@ async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = S
             )
             setting = result.scalars().first()
             if not vote.used and not setting.enabled:
-                return api_response(message="Vote first so see results.", success=False, status_code=412)
+                return api_response(message="Vote first to see results.", success=False, status_code=412)
         
         result = await session.execute(
             select(Settings).where(Settings.name == "vote_public")
