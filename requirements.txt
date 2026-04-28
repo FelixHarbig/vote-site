@@ -15,6 +15,7 @@ PyJWT
 pyotp
 bcrypt
 jinja2
+supabase
 
 # optional
 alembic

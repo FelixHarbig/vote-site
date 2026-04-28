@@ -489,4 +489,4 @@ async def nuke_ip(ip_address: str, request: Request, all_votes: bool = False):
                 session.add(v)
         await session.commit()
     log.info(f"Nuked votes from IP {ip_address} by admin {request.client.host}")
-    return api_response(message=f"Successfully deleted {"votes" if all_votes else "ip adress instances in database"} from IP.")
+    return api_response(message=f"Successfully deleted {'votes' if all_votes else 'ip adress instances in database'} from IP.")
