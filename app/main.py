@@ -83,7 +83,7 @@ if os.getenv("DEV", "FALSE").upper() == "TRUE":
     allowed_origins = ALLOWED_ORIGINS
     log.warning("CORS allowed origins set for development")
 else:
-    if not ALLOWED_ORIGINS or ALLOWED_ORIGINS.strip() == "":
+    if not ALLOWED_ORIGINS:
         raise ValueError("FRONTEND_URL is not set")
     allowed_origins = ALLOWED_ORIGINS
 
