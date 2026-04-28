@@ -2,6 +2,12 @@
 
 A secure, dockerized backend for teacher evaluations using FastAPI, PostgreSQL, and Redis.
 
+## Deployment
+
+See **[INSTALL.md](INSTALL.md)** for complete installation, configuration, and deployment instructions (Docker, local development, production).
+
+---
+
 ## Project Overview
 
 - **Admins**: Secure management via TOTP (Time-based One-Time Password) and JWT authentication.
@@ -35,7 +41,7 @@ This will generate a TOTP secret and QR code URI. Scan this with an authenticato
 
 ## Environment Configuration
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root. See `.env.example` for all available options and `.INSTALL.md` for detailed setup instructions.
 
 ```env
 # Database
@@ -53,6 +59,8 @@ ADMIN_SECRET=your_secret_admin_key_here
 FRONTEND_URL=http://localhost:3000
 DEV=FALSE
 ```
+
+> **Note**: For Docker deployments on Linux, the `host.docker.internal` hostname is automatically resolved via `extra_hosts` in the backend compose file. If connecting to a host-run database, use `host.docker.internal` (or your host IP) in `DATABASE_URL`. For all-Docker setups, use service names (`postgres`, `redis`). See [INSTALL.md](INSTALL.md) for complete configuration details.
 
 ## Usage
 

@@ -215,7 +215,8 @@ async def get_vote_options(request: Request, challenge: str = Security(extract_c
     if valid is not True:
         return valid
     options = []
-    for field_name, _ in VoteSubmissionItem.model_fields.items():
+    from pydantic import BaseModel
+    for field_name in VoteSubmissionItem.model_fields.keys():
         options.append(field_name)
     return api_response(message="Vote options retrieved.", data=options)
 
@@ -337,7 +338,8 @@ async def submit_vote(request: Request, vote_data: Dict[str, VoteSubmissionItem]
                 }
                 
                 # Add all submitted vote fields that are valid in the model
-                for field_name, field_value in submission.model_dump(exclude_none=True).items():
+                submission_dict = submission.model_dump(exclude_none=True) if hasattr(submission, 'model_dump') else submission.dict(exclude_none=True)
+                for field_name, field_value in submission_dict.items():
                     if field_name in votes_model_fields and field_value is not None:
                         vote_kwargs[field_name] = field_value
                 

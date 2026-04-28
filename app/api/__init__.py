@@ -13,6 +13,14 @@ from api.auth.router import router as auth_router
 # Include authentication router (no auth required for login endpoint)
 router.include_router(auth_router)
 
+# Import Supabase authentication router
+from api.supabase_auth import router as supabase_auth_router
+router.include_router(supabase_auth_router)
+
+# Import GDPR router
+from api.gdpr import router as gdpr_router
+router.include_router(gdpr_router)
+
 # Import admin modules (they register routes on admin_router)
 from api.admin import manage_teachers, manage_votes, manage_db, manage_images, metrics, manage_imports, manage_exports
 

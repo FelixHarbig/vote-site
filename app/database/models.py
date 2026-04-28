@@ -55,8 +55,9 @@ class Votes(VotingEngine):
     humor = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     character = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
     style = sqlalchemy.Column(sqlalchemy.Integer, nullable=True)
-
+    user_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)  # Supabase user ID
     ip_address = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    ip_hash = sqlalchemy.Column(sqlalchemy.String, nullable=True)  # Hashed IP for GDPR
 
     teacher = sqlalchemy.orm.relationship("Teachers", back_populates="votes")
 
@@ -77,6 +78,8 @@ class VoteCodes(VotingEngine):
     grade = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
     gender = sqlalchemy.Column(sqlalchemy.Boolean, nullable=True)
     continuation_key = sqlalchemy.Column(sqlalchemy.String, nullable=True)
+    user_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)  # Supabase user ID
+    session_id = sqlalchemy.Column(sqlalchemy.String, nullable=True)  # For GDPR consent tracking
 
     disabled = sqlalchemy.Column(sqlalchemy.Boolean, default=False, nullable=False)
 

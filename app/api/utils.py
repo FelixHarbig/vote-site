@@ -62,3 +62,8 @@ async def get_image_from_cache(teacher_id: int, number: int = 1):
 async def set_image_cache(teacher_id: int, number: int, data: bytes, expire=600):
     key = f"teacher_image:{teacher_id}:{number}"
     await redis.set(key, data, ex=expire)
+
+def hash_ip(ip: str) -> str:
+    """Hash an IP address for GDPR compliance."""
+    import hashlib
+    return hashlib.sha256(ip.encode()).hexdigest()[:16]
