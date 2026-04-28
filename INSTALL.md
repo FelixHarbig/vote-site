@@ -62,12 +62,14 @@ docker network create vote_internal || true  # ignore if already exists
 ### Step 3: Start Database & Redis
 
 ```bash
-docker compose -f database_reddis_docker/docker-compose.yml up -d
+docker compose --env-file .env -f database_reddis_docker/docker-compose.yml up -d
 ```
 
+
+*Note: --env-file .env is required here because the compose file uses ${POSTGRES_USER}, ${POSTGRES_DB}, and ${REDIS_PASSWORD} in its healthcheck and command fields.
 Verify both containers are healthy:
 ```bash
-docker compose -f database_reddis_docker/docker-compose.yml ps
+docker compose --env-file .env -f database_reddis_docker/docker-compose.yml ps
 # Wait until "postgres" and "redis" show State "Up" (not "starting")
 ```
 
@@ -486,7 +488,7 @@ docker compose -f backend_docker/docker-compose.yml logs -f backend
 docker compose -f backend_docker/docker-compose.yml ps
 
 # Database backups
-docker compose -f database_reddis_docker/docker-compose.yml exec postgres pg_dump -U voteuser votedb > backup_$(date +%F).sql
+docker compose --env-file .env -f database_reddis_docker/docker-compose.yml exec postgres pg_dump -U voteuser votedb > backup_$(date +%F).sql
 ```
 
 ### 9. Zero-Downtime Updates
@@ -543,16 +545,16 @@ If you run into permission denied errors on volume mounts, you may need to adjus
 
 **Check**:
 - `.env` has correct `DATABASE_URL` (host, port, user, password)
-- PostgreSQL container is healthy: `docker compose -f database_reddis_docker/docker-compose.yml logs postgres`
+- PostgreSQL container is healthy: `docker compose --env-file .env -f database_reddis_docker/docker-compose.yml logs postgres`
 - Network exists: `docker network ls | grep vote_internal`
-- Try connecting manually: `docker compose -f database_reddis_docker/docker-compose.yml exec postgres psql -U voteuser -d votedb`
+- Try connecting manually: `docker compose --env-file .env -f database_reddis_docker/docker-compose.yml exec postgres psql -U voteuser -d votedb`
 
 ### Backend fails to start: "Redis connection failed"
 
 **Check**:
 - `REDIS_URL` includes password if required (`redis://:password@host:port`)
-- Redis container is healthy: `docker compose -f database_reddis_docker/docker-compose.yml logs redis`
-- Test connection: `docker compose -f database_reddis_docker/docker-compose.yml exec redis redis-cli -a 2 ping` (use your password)
+- Redis container is healthy: `docker compose --env-file .env -f database_reddis_docker/docker-compose.yml logs redis`
+- Test connection: `docker compose --env-file .env -f database_reddis_docker/docker-compose.yml exec redis redis-cli -a 2 ping` (use your password)
 
 ### 500 Internal Server Error
 
@@ -573,7 +575,7 @@ Ensure `FRONTEND_URL` in `.env` exactly matches the frontend origin (including p
 
 - Ensure you're running the correct migration sequence: `alembic upgrade head`
 - If you manually edited migrations, check for conflicts
-- Reset database (development only): `docker compose -f database_reddis_docker/docker-compose.yml down -v && docker compose -f database_reddis_docker/docker-compose.yml up -d` (⚠️ destroys all data)
+- Reset database (development only): `docker compose --env-file .env -f database_reddis_docker/docker-compose.yml down -v && docker compose --env-file .env -f database_reddis_docker/docker-compose.yml up -d` (⚠️ destroys all data)
 
 ### Cannot reach host.docker.internal from backend on Linux
 
