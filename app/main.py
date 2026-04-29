@@ -20,7 +20,7 @@ async def create_settings():
     """
     generates given settings if they do not exist
     """
-    settings = {"vote_public": False, "vote_locked": False, "vote_public_tokenless": False, "gdpr_enabled": True, "supabase_auth_enabled": True}
+    settings = {"vote_public": False, "vote_locked": False, "vote_public_tokenless": False, "gdpr_enabled": True, "supabase_auth_enabled": True, "site_commercial": False}
     async with get_session() as session:
         for key in settings:
             result = await session.execute(

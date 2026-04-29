@@ -109,6 +109,7 @@ CONSENT_TYPES = {
 
 # Cache for gdpr_enabled setting (refreshed periodically)
 _gdpr_enabled_cache = {"enabled": True, "last_check": 0}
+_site_commercial_cache = {"enabled": False, "last_check": 0}
 CACHE_TTL_SECONDS = 30  # How long to cache the setting
 
 
@@ -148,6 +149,38 @@ async def is_gdpr_enabled() -> bool:
         _gdpr_enabled_cache["enabled"] = True
     
     return _gdpr_enabled_cache["enabled"]
+
+
+async def is_site_commercial() -> bool:
+    """
+    Check if the site is operated commercially (setting: site_commercial).
+    When False (default), the imprint and privacy policy omit personal contact
+    info and instead note that no formal imprint is required for private,
+    non-monetised sites under § 5 TMG / § 5 DDG.
+    Uses a short-lived cache to avoid hitting the database on every request.
+    """
+    import time
+    from sqlalchemy import select
+
+    current_time = time.time()
+
+    if current_time - _site_commercial_cache["last_check"] < CACHE_TTL_SECONDS:
+        return _site_commercial_cache["enabled"]
+
+    try:
+        async with get_session() as session:
+            result = await session.execute(
+                select(Settings).where(Settings.name == "site_commercial")
+            )
+            setting = result.scalars().first()
+            _site_commercial_cache["enabled"] = setting.enabled if setting is not None else False
+            _site_commercial_cache["last_check"] = current_time
+            log.info(f"Site commercial: {_site_commercial_cache['enabled']}")
+    except Exception as e:
+        log.error(f"Error checking site_commercial setting: {e}")
+        _site_commercial_cache["enabled"] = False
+
+    return _site_commercial_cache["enabled"]
 
 
 # ============================================================================
@@ -1057,17 +1090,18 @@ async def get_privacy_policy(request: Request):
     Designed for single-person non-commercial hosting.
     """
     controller_info = await get_data_controller_info()
-    
+    commercial = await is_site_commercial()
+
     policy = {
         "version": "3.1",
         "effective_date": "2026-04-24",
-        "last_updated": datetime(2026, 4, 24).isoformat(), # Edit this to the actual date you modify it
+        "last_updated": datetime(2026, 4, 24).isoformat(),  # Edit this to the actual date you modify it
         "language": "de",
         "controller": {
             # The following is set from the function above, which is fetched from the .env file
-            "name": controller_info.get("name", "VoteStation"),
-            "address": controller_info.get("address", "[Ihre Adresse]"),
-            "email": controller_info.get("email", "[Ihre E-Mail]") 
+            "name": controller_info.get("name", "VoteStation") if commercial else None,
+            "address": controller_info.get("address", "[Ihre Adresse]") if commercial else None,
+            "email": controller_info.get("email", "[Ihre E-Mail]"),
         },
         "sections": {
             "1_introduction": {
@@ -1081,7 +1115,16 @@ async def get_privacy_policy(request: Request):
             },
             "2_data_controller": {
                 "title": "2. Verantwortlicher",
-                "content": f"{controller_info.get('name', 'VoteStation')}\n{controller_info.get('address', 'Error while fetching adress')}"
+                "content": (
+                    f"{controller_info.get('name', 'VoteStation')}\n"
+                    f"{controller_info.get('address', '')}\n"
+                    f"E-Mail: {controller_info.get('email', '')}"
+                ) if commercial else (
+                    "Diese Website wird als privates, nicht monetarisiertes Projekt betrieben. "
+                    "Da kein kommerzieller Zweck verfolgt wird, entfällt gemäß § 5 DDG / § 5 TMG "
+                    "die Pflicht zur vollständigen Anbieterkennzeichnung.\n\n"
+                    f"Kontakt: {controller_info.get('email', '[Ihre E-Mail]')}"
+                )
             },
             "3_data_collected": {
                 "title": "3. Verarbeitete Daten",
@@ -1220,18 +1263,41 @@ async def get_imprint(request: Request):
     """
     Get the imprint document (German Impressumspflicht compliant).
     Uses the same controller information as the privacy policy.
+    When site_commercial=False, only the e-mail is shown and a note explains
+    that a full imprint is not required for private, non-monetised sites
+    pursuant to § 5 TMG / § 5 DDG.
     """
     controller_info = await get_data_controller_info()
-    
+    commercial = await is_site_commercial()
+
+    if commercial:
+        operator_content = (
+            "Angaben zum Anbieter dieses Dienstes:\n\n"
+            "Name: " + controller_info.get("name", "") + "\n"
+            "Adresse: " + controller_info.get("address", "") + "\n"
+            "E-Mail: " + controller_info.get("email", "") +
+            ("\nTelefon: " + controller_info.get("phone", "") if controller_info.get("phone") else "")
+        )
+    else:
+        operator_content = (
+            "Diese Website wird als privates, nicht monetarisiertes Projekt betrieben "
+            "und verfolgt keinerlei kommerzielle Zwecke.\n\n"
+            "Gemäß § 5 TMG / § 5 DDG besteht für rein private, nicht gewerbliche "
+            "Telemedien keine Impressumspflicht. Eine vollständige Anbieterkennzeichnung "
+            "ist daher nicht erforderlich.\n\n"
+            "Kontakt: " + controller_info.get("email", "")
+        )
+
     imprint = {
         "version": "1.0",
         "last_updated": datetime(2026, 2, 17).isoformat(),
         "language": "de",
+        "commercial": commercial,
         "controller": {
-            "name": controller_info.get("name", ""),
-            "address": controller_info.get("address", ""),
+            "name": controller_info.get("name", "") if commercial else None,
+            "address": controller_info.get("address", "") if commercial else None,
             "email": controller_info.get("email", ""),
-            "phone": controller_info.get("phone", "")
+            "phone": controller_info.get("phone", "") if commercial else None,
         },
         "sections": {
             "about": {
@@ -1240,7 +1306,7 @@ async def get_imprint(request: Request):
             },
             "operator": {
                 "title": "Angaben gemäß § 5 TMG",
-                "content": "Angaben zum Anbieter dieses Dienstes:\n\nName: " + controller_info.get("name", "") + "\nAdresse: " + controller_info.get("address", "") + "\nE-Mail: " + controller_info.get("email", "") + ("\nTelefon: " + controller_info.get("phone", "") if controller_info.get("phone") else "")
+                "content": operator_content
             },
             "liability_content": {
                 "title": "Haftung für Inhalte",
@@ -1266,5 +1332,6 @@ async def get_imprint(request: Request):
         message="Imprint",
         data=imprint
     )
+
 
 
