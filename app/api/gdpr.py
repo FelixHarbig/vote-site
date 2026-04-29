@@ -1097,6 +1097,7 @@ async def get_privacy_policy(request: Request):
         "effective_date": "2026-04-24",
         "last_updated": datetime(2026, 4, 24).isoformat(),  # Edit this to the actual date you modify it
         "language": "de",
+        "commercial": commercial,
         "controller": {
             # The following is set from the function above, which is fetched from the .env file
             "name": controller_info.get("name", "VoteStation") if commercial else None,
