@@ -320,7 +320,7 @@ async def submit_vote(request: Request, vote_data: Dict[str, VoteSubmissionItem]
             
             # Get all valid vote field names from Votes model
             votes_model_fields = {col.name for col in Votes.__table__.columns 
-                                  if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+                                  if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address', 'ip_hash', 'user_id')}
             
             for teacher_id, submission in vote_data.items():
                 if not teacher_id.isdigit():
@@ -432,7 +432,7 @@ async def get_vote_outcome(teacher_id: int, request: Request, challenge: str = S
 
         averages = {}
         votes_model_fields = {col.name for col in Votes.__table__.columns 
-                               if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+                               if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address', 'ip_hash', 'user_id')}
         if votes:
             for field_name in votes_model_fields:
                 values = [getattr(v, field_name) for v in votes if getattr(v, field_name) is not None]

@@ -262,7 +262,7 @@ async def add_vote(teacher_id: int, request: Request, vote_data: VoteSubmissionI
     
     # Get all valid vote field names from Votes model
     votes_model_fields = {col.name for col in Votes.__table__.columns 
-                          if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+                          if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address', 'ip_hash', 'user_id')}
     
     # Extract vote fields from request body (exclude None values)
     vote_fields = {}
@@ -339,7 +339,7 @@ async def get_votes(teacher_id: int, request: Request, limit: int = 100, offset:
         
         # Get all column names from Votes model
         votes_model_fields = {col.name for col in Votes.__table__.columns 
-                          if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+                          if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address', 'ip_hash', 'user_id')}
         
         for v in votes:
             vote_dict = {}
@@ -395,7 +395,7 @@ async def get_vote_count(teacher_id: int, request: Request):
         # Dynamically calculate averages for all numeric vote fields
         averages = {}
         votes_model_fields = {col.name for col in Votes.__table__.columns 
-                               if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address')}
+                               if col.name not in ('id', 'teacher_id', 'timestamp', 'ip_address', 'ip_hash', 'user_id')}
         
         if votes:
             for field_name in votes_model_fields:
