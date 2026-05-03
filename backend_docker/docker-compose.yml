@@ -1,5 +1,6 @@
 services:
   backend:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: backend_docker/Dockerfile
