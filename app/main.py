@@ -106,6 +106,6 @@ if __name__ == "__main__":
     log.warning("Starting development server")
     from api.anti_abuse import reset_ip_ban
     asyncio.run(reset_ip_ban("127.0.0.1"))
-    uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8001, reload=True)
 
 
